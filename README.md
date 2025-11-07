@@ -20,7 +20,7 @@ Finally, download the models from huggingface and build them locally:
 hf download distil-labs/Distil-commit-bot-1.0-1B --local-dir distil-model
 
 cd distil-model
-ollama create commit-bot-1.0 -f Modelfile
+ollama create commit-bot-1.0-1B -f Modelfile
 ```
 
 ### 2. Run the assistant

@@ -127,7 +127,9 @@ class RepositoryChangeHandler(FileSystemEventHandler):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--api-key", type=str, default="EMPTY", required=False)
-    parser.add_argument("--model", type=str, default="commit-bot-1B", required=False)
+    parser.add_argument(
+        "--model", type=str, default="commit-bot-1.0-1B", required=False
+    )
     parser.add_argument("--port", type=int, default=11434, required=False)
     parser.add_argument(
         "--repository",
