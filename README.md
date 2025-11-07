@@ -1,4 +1,4 @@
-# distil-commit-boy
+# distil-commit-bot
 
 We trained an SLM assistants for assistance with commit messages - Llama 3.2 model (1B parameters) that you can run *locally* via Ollama!
 
