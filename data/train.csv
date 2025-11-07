@@ -1,0 +1,629 @@
+question,answer,context,reasoning
+Process the context according to the task description.,"Add GCD, primality test and filter to math helpers
+
+Expanded the utility module with comprehensive number‑theoretic functions: `gcd` with input validation, deterministic `is_prime` using trial division, and `filter_primes` to extract primes from iterables. Added type hints and improved docstrings for existing `add` and `multiply`. Included a new test suite covering arithmetic, GCD edge cases, prime detection, and prime filtering.","diff --git a/src/utils/math_helpers.py b/src/utils/math_helpers.py
+index e3a1b2c..f4d5e6f 100644
+--- a/src/utils/math_helpers.py
++++ b/src/utils/math_helpers.py
+@@ -1,12 +1,46 @@
+-\""\""\""Utility functions for basic arithmetic operations.\""\""\""
+-
+-def add(a, b):
+-    return a + b
+-
+-def multiply(a, b):
+-    return a * b
++\""\""\""Utility functions for number‑theoretic operations.\n+\n+The original module only exposed simple arithmetic helpers.  This update adds\n+commonly‑used mathematical utilities such as greatest common divisor (GCD)\n+and a deterministic primality test.  All functions include type hints and\n+basic input validation.\n+\""\""\""\n+\n+from __future__ import annotations\n+\n+from math import isqrt\n+from typing import Iterable\n+\n+def add(a: float, b: float) -> float:\n+    \""\""\""Return the sum of *a* and *b*.\n+\n+    This wrapper retains backwards compatibility with the previous loose\n+    implementation while providing proper type information.\n+    \""\""\""\n+    return a + b\n+\n+def multiply(a: float, b: float) -> float:\n+    \""\""\""Return the product of *a* and *b*.\n+    \""\""\""\n+    return a * b\n+\n+def gcd(a: int, b: int) -> int:\n+    \""\""\""Compute the greatest common divisor of *a* and *b* using Euclid's algorithm.\n+\n+    Raises\n+    ------\n+    ValueError\n+        If either argument is negative.\n+    \""\""\""\n+    if a < 0 or b < 0:\n+        raise ValueError(\""gcd() arguments must be non‑negative\"")\n+    while b:\n+        a, b = b, a % b\n+    return a\n+\n+def is_prime(n: int) -> bool:\n+    \""\""\""Return ``True`` if *n* is a prime number, ``False`` otherwise.\n+\n+    The function implements a simple trial‑division algorithm up to the square\n+    root of *n*.  It treats numbers less than 2 as non‑prime.\n+    \""\""\""\n+    if n < 2:\n+        return False\n+    if n in (2, 3):\n+        return True\n+    if n % 2 == 0 or n % 3 == 0:\n+        return False\n+    i = 5\n+    step = 2\n+    limit = isqrt(n)\n+    while i <= limit:\n+        if n % i == 0:\n+            return False\n+        i += step\n+        step = 6 - step  # alternate between +2 and +4\n+    return True\n+\n+def filter_primes(numbers: Iterable[int]) -> list[int]:\n+    \""\""\""Return a list containing only the prime numbers from *numbers*.\n+    \""\""\""\n+    return [n for n in numbers if is_prime(n)]\ndiff --git a/tests/test_math_helpers.py b/tests/test_math_helpers.py
+new file mode 100644
+index 0000000..a1b2c3d
+--- /dev/null
++++ b/tests/test_math_helpers.py
+@@ -0,0 +1,78 @@
++import unittest
++from src.utils.math_helpers import add, multiply, gcd, is_prime, filter_primes
++
++
++class TestMathHelpers(unittest.TestCase):
++
++    def test_add_and_multiply(self):
++        self.assertEqual(add(1, 2), 3)
++        self.assertAlmostEqual(add(2.5, 1.5), 4.0)
++        self.assertEqual(multiply(3, 4), 12)
++        self.assertAlmostEqual(multiply(2.0, 2.5), 5.0)
++
++    def test_gcd_basic_cases(self):
++        self.assertEqual(gcd(48, 18), 6)
++        self.assertEqual(gcd(0, 5), 5)
++        self.assertEqual(gcd(7, 0), 7)
++        self.assertEqual(gcd(13, 13), 13)
++        with self.assertRaises(ValueError):
++            gcd(-4, 6)
++
++    def test_is_prime_various(self):
++        primes = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29]\n+        non_primes = [0, 1, 4, 6, 8, 9, 10, 12, 14, 15]\n+        for p in primes:\n+            self.assertTrue(is_prime(p), f\""{p} should be prime\"")\n+        for n in non_primes:\n+            self.assertFalse(is_prime(n), f\""{n} should not be prime\"")\n+\n+    def test_filter_primes(self):
++        numbers = list(range(1, 31))\n+        expected = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29]\n+        self.assertListEqual(filter_primes(numbers), expected)\n+\n+\n+if __name__ == \""__main__\"":\n+    unittest.main()",null
+Process the context according to the task description.,"Add HTTP client with retry, timeout, auth
+
+Implemented a lightweight HTTP client module (`src/network/http_client.py`) that provides:
+- A generic `request` function supporting query parameters, custom headers, optional basic‑auth, configurable socket timeout, and automatic retry on 5xx server errors.
+- `HttpResponse` wrapper with status, body, headers, and a `.json()` helper.
+- Convenience `get` and `post` wrappers.
+- Custom `HttpClientError` exception for network failures.
+Added comprehensive tests (`tests/test_http_client.py`) covering successful GET, POST with auth and retry logic, network exception handling, and JSON parsing errors.","diff --git a/src/network/http_client.py b/src/network/http_client.py
+new file mode 100644
+index 0000000..e1a2b3c
+--- /dev/null
++++ b/src/network/http_client.py
+@@ -0,0 +1,112 @@
++\""\""\""Simple HTTP client with retry and timeout support.\n+\n+The original project did not ship a networking layer.  This module provides a\n+light‑weight wrapper around :mod:`http.client` that is easy to mock in unit\n+tests.  Features added:\n+\n+* Configurable connection timeout.\n+* Automatic retry on transient HTTP errors (5xx status codes).\n+* Optional basic‑auth header generation.\n+* Helper ``request`` function that returns the response body as text.\n+\""\""\""\n+\n+from __future__ import annotations\n+\n+import base64\n+import json\n+import time\n+from http.client import HTTPConnection, HTTPSConnection, HTTPResponse\n+from typing import Any, Dict, Tuple\n+\n+DEFAULT_TIMEOUT = 10  # seconds\n+DEFAULT_MAX_RETRIES = 3\n+\n+class HttpClientError(Exception):\n+    \""\""\""Base exception for all HTTP client errors.\""\""\""\n+\n+class HttpResponse:\n+    \""\""\""Container for a successful response.\n+\n+    Attributes\n+    ----------\n+    status:\n+        HTTP status code.\n+    body:\n+        Decoded response payload (str).\n+    headers:\n+        Mapping of response headers.\n+    \""\""\""\n+\n+    def __init__(self, status: int, body: str, headers: Dict[str, str]):\n+        self.status = status\n+        self.body = body\n+        self.headers = headers\n+\n+    def json(self) -> Any:\n+        \""\""\""Parse ``body`` as JSON and return the resulting Python object.\""\""\""\n+        return json.loads(self.body)\n+\n+def _build_auth_header(username: str, password: str) -> Tuple[str, str]:\n+    token = base64.b64encode(f\""{username}:{password}\"".encode()).decode()\n+    return \""Authorization\"", f\""Basic {token}\""\n+\n+def request(\n+    method: str,\n+    url: str,\n+    *,\n+    params: Dict[str, str] | None = None,\n+    headers: Dict[str, str] | None = None,\n+    data: str | None = None,\n+    timeout: int = DEFAULT_TIMEOUT,\n+    max_retries: int = DEFAULT_MAX_RETRIES,\n+    auth: Tuple[str, str] | None = None,\n+) -> HttpResponse:\n+    \""\""\""Perform an HTTP request with optional retry logic.\n+\n+    Parameters\n+    ----------\n+    method:\n+        HTTP verb such as ``\""GET\""`` or ``\""POST\""``.\n+    url:\n+        Full URL (including scheme and host).  Only ``http`` and ``https`` are\n+        supported.\n+    params:\n+        Query string parameters – will be URL‑encoded and appended to *url*.\n+    headers:\n+        Additional request headers.\n+    data:\n+        Request body for methods like ``POST``.\n+    timeout:\n+        Socket timeout in seconds.\n+    max_retries:\n+        Number of automatic retries on transient server errors.\n+    auth:\n+        ``(username, password)`` tuple for basic authentication.\n+    \""\""\""\n+    from urllib.parse import urlencode, urlparse\n+\n+    if headers is None:\n+        headers = {}\n+    if params:\n+        query = urlencode(params)\n+        delimiter = \""&\"" if \""?\"" in url else \""?\""\n+        url = f\""{url}{delimiter}{query}\""\n+    if auth:\n+        headers.update(dict([_build_auth_header(*auth)]))\n+\n+    parsed = urlparse(url)\n+    conn_cls = HTTPSConnection if parsed.scheme == \""https\"" else HTTPConnection\n+    host = parsed.hostname\n+    port = parsed.port\n+    path = parsed.path or \""/\""\n+    if parsed.query:\n+        path = f\""{path}?{parsed.query}\""\n+\n+    attempt = 0\n+    while True:\n+        attempt += 1\n+        conn = conn_cls(host, port, timeout=timeout)\n+        try:\n+            conn.request(method.upper(), path, body=data, headers=headers)\n+            resp: HTTPResponse = conn.getresponse()\n+            body = resp.read().decode()\n+            response = HttpResponse(resp.status, body, dict(resp.getheaders()))\n+            if 500 <= resp.status < 600 and attempt <= max_retries:\n+                # Transient server error – wait a bit and retry\n+                time.sleep(0.5 * attempt)\n+                continue\n+            return response\n+        except Exception as exc:\n+            conn.close()\n+            raise HttpClientError(str(exc)) from exc\n+        finally:\n+            conn.close()\n+\n+# Backward‑compatible convenience wrapper\n+def get(url: str, **kwargs: Any) -> HttpResponse:\n+    return request(\""GET\"", url, **kwargs)\n+\n+def post(url: str, data: str | None = None, **kwargs: Any) -> HttpResponse:\n+    return request(\""POST\"", url, data=data, **kwargs)\n+diff --git a/tests/test_http_client.py b/tests/test_http_client.py
+new file mode 100644
+index 0000000..f2c3d4e
+--- /dev/null
++++ b/tests/test_http_client.py
+@@ -0,0 +1,106 @@
++import base64
++import json
++import unittest
++from unittest.mock import patch, MagicMock
++
++from src.network.http_client import request, get, post, HttpResponse, HttpClientError
++
++
++class TestHttpClient(unittest.TestCase):
++
++    def setUp(self):
++        self.sample_json = {\""msg\"": \""hello\"", \""code\"": 200}\n+        self.sample_body = json.dumps(self.sample_json)
++
++    @patch(\""src.network.http_client.HTTPConnection\"")\n+    def test_get_successful(self, mock_conn_cls):\n+        mock_conn = MagicMock()\n+        mock_conn_cls.return_value = mock_conn\n+        # Mock response object\n+        mock_resp = MagicMock()\n+        mock_resp.status = 200\n+        mock_resp.read.return_value = self.sample_body.encode()\n+        mock_resp.getheaders.return_value = [(\""Content-Type\"", \""application/json\"")]\n+        mock_conn.getresponse.return_value = mock_resp\n+\n+        resp = get(\""http://example.com/api\"")\n+        self.assertIsInstance(resp, HttpResponse)\n+        self.assertEqual(resp.status, 200)\n+        self.assertEqual(resp.json(), self.sample_json)\n+        mock_conn.request.assert_called_once_with(\""GET\"", \""/api\"", body=None, headers={})\n+\n+    @patch(\""src.network.http_client.HTTPSConnection\"")\n+    def test_post_with_auth_and_retry(self, mock_conn_cls):\n+        # Simulate a 502 error on first attempt then a 200 success\n+        mock_conn = MagicMock()\n+        mock_conn_cls.return_value = mock_conn\n+        mock_resp_fail = MagicMock()\n+        mock_resp_fail.status = 502\n+        mock_resp_fail.read.return_value = b\""\""\n+        mock_resp_fail.getheaders.return_value = []\n+        mock_resp_success = MagicMock()\n+        mock_resp_success.status = 200\n+        mock_resp_success.read.return_value = self.sample_body.encode()\n+        mock_resp_success.getheaders.return_value = [(\""Content-Type\"", \""application/json\"")]\n+        mock_conn.getresponse.side_effect = [mock_resp_fail, mock_resp_success]\n+\n+        auth = (\""user\"", \""pass\"")\n+        resp = post(\n+            \""https://api.service.com/submit\"",\n+            data=\""payload\"",\n+            auth=auth,\n+            max_retries=2,\n+        )\n+        self.assertEqual(resp.status, 200)\n+        # Verify that the Authorization header was added\n+        expected_header = {\n+            \""Authorization\"": f\""Basic {base64.b64encode('user:pass'.encode()).decode()}\""\n+        }\n+        # The second request (after retry) should contain the auth header\n+        calls = mock_conn.request.call_args_list\n+        self.assertIn(expected_header, calls[-1][1][\""headers\""])\n+\n+    @patch(\""src.network.http_client.HTTPConnection\"")\n+    def test_network_exception_raises_httpclienterror(self, mock_conn_cls):\n+        mock_conn = MagicMock()\n+        mock_conn_cls.return_value = mock_conn\n+        mock_conn.request.side_effect = ConnectionError(\""Network down\"")\n+        with self.assertRaises(HttpClientError) as ctx:\n+            request(\""GET\"", \""http://offline.test\"")\n+        self.assertIn(\""Network down\"", str(ctx.exception))\n+\n+    def test_json_parsing_error_propagates(self):\n+        # Directly test the HttpResponse.json method with malformed JSON\n+        resp = HttpResponse(200, \""{invalid json\"", {})\n+        with self.assertRaises(json.JSONDecodeError):\n+            resp.json()\n+\n+\n+if __name__ == \""__main__\"":\n+    unittest.main()",null
+Process the context according to the task description.,"Add comprehensive tests for HTTP client
+
+- Introduced `tests/test_http_client.py` covering synchronous `get` and `post` functions, including custom timeout handling.
+- Added asynchronous tests for `aget` and `apost` using `aiohttp` with proper mocking of `ClientSession`.
+- Utilized `unittest.mock` to simulate responses and verify correct request parameters and return values.
+- Included a conditional skip for async tests when `aiohttp` is not installed.","diff --git a/tests/test_http_client.py b/tests/test_http_client.py
+new file mode 100644
+index 0000000..f1e2d3c
+--- /dev/null
++++ b/tests/test_http_client.py
+@@ -0,0 +1,78 @@
++import unittest
++from unittest import mock
++import json
++
++from src.network.http_client import get, post, aget, apost, DEFAULT_TIMEOUT
++
++
++class TestHttpClientSync(unittest.TestCase):
++
++    @mock.patch(""src.network.http_client.requests.get"")
++    def test_get_successful(self, mock_get):
++        mock_resp = mock.Mock()
++        mock_resp.text = ""Hello World""
++        mock_resp.raise_for_status = mock.Mock()
++        mock_get.return_value = mock_resp
++
++        result = get(""https://example.com"")
++        mock_get.assert_called_once_with(""https://example.com"", timeout=DEFAULT_TIMEOUT)
++        self.assertEqual(result, ""Hello World"")
++
++    @mock.patch(""src.network.http_client.requests.post"")
++    def test_post_json(self, mock_post):
++        payload = {""key"": ""value""}
++        mock_resp = mock.Mock()
++        mock_resp.json.return_value = {""status"": ""ok""}
++        mock_resp.raise_for_status = mock.Mock()
++        mock_post.return_value = mock_resp
++
++        result = post(""https://api.test"", payload)
++        mock_post.assert_called_once_with(""https://api.test"", json=payload, timeout=DEFAULT_TIMEOUT)
++        self.assertEqual(result, {""status"": ""ok""})
++
++    @mock.patch(""src.network.http_client.requests.get"")
++    def test_get_custom_timeout(self, mock_get):
++        mock_resp = mock.Mock()
++        mock_resp.text = ""data""
++        mock_resp.raise_for_status = mock.Mock()
++        mock_get.return_value = mock_resp
++
++        result = get(""https://example.com"", timeout=10)
++        mock_get.assert_called_once_with(""https://example.com"", timeout=10)
++        self.assertEqual(result, ""data"")
++
++
++class TestHttpClientAsync(unittest.IsolatedAsyncioTestCase):
++
++    async def asyncSetUp(self):
++        try:
++            import aiohttp  # noqa: F401
++        except ImportError:
++            self.skipTest(""aiohttp is not installed"")
++
++    @mock.patch(""src.network.http_client.aiohttp.ClientSession"")
++    async def test_aget_successful(self, mock_session_cls):
++        mock_session = mock.AsyncMock()
++        mock_session_cls.return_value.__aenter__.return_value = mock_session
++        mock_resp = mock.AsyncMock()
++        mock_resp.text = mock.AsyncMock(return_value=""async hello"")
++        mock_resp.raise_for_status = mock.Mock()
++        mock_session.get.return_value.__aenter__.return_value = mock_resp
++
++        result = await aget(""https://async.test"")
++        mock_session.get.assert_awaited_once_with(""https://async.test"")
++        self.assertEqual(result, ""async hello"")
++
++    @mock.patch(""src.network.http_client.aiohttp.ClientSession"")
++    async def test_apost_json(self, mock_session_cls):
++        mock_session = mock.AsyncMock()
++        mock_session_cls.return_value.__aenter__.return_value = mock_session
++        mock_resp = mock.AsyncMock()
++        mock_resp.json = mock.AsyncMock(return_value={""ok"": True})
++        mock_resp.raise_for_status = mock.Mock()
++        mock_session.post.return_value.__aenter__.return_value = mock_resp
++
++        payload = {""x"": 1}
++        result = await apost(""https://async.post"", payload)
++        mock_session.post.assert_awaited_once_with(""https://async.post"", json=payload)
++        self.assertEqual(result, {""ok"": True})
++
++
++if __name__ == ""__main__"":
++    unittest.main()",null
+Process the context according to the task description.,"Add JSON/YAML serializer and file helpers
+
+Replaced the minimal JSON wrappers with a full‑featured serializer module:
+- Added type‑hinted `dumps`/`loads` with pretty‑print support.
+- Integrated optional YAML support via **pyyaml**, exposing `yaml_dumps` and `yaml_loads` with runtime checks.
+- Implemented `dump_to_file` and `load_from_file` that automatically choose the serializer/deserializer based on file extension, defaulting to JSON for unknown extensions.
+- Added robust error handling for missing YAML dependency and clarified module documentation.
+- Included comprehensive unit tests covering JSON round‑trip, YAML round‑trip (when available), and fallback behavior for unknown extensions.","diff --git a/src/data/serializer.py b/src/data/serializer.py
+index a3b4c5d..d9e0f1a 100644
+--- a/src/data/serializer.py
++++ b/src/data/serializer.py
+@@ -1,30 +1,82 @@
+-\""\""\""Simple JSON serializer.\""\""\""
+-
+-import json
+-
+-def dumps(obj):
+-    return json.dumps(obj)
+-
+-def loads(s):
+-    return json.loads(s)
++\""\""\""Flexible data‑serialization utilities.\n+\n+The original file provided only thin wrappers around ``json``.  This revision\n+adds:\n+\n+* Support for YAML via ``pyyaml`` (optional).\n+* Explicit type hints and error handling.\n+* Convenience functions ``dump_to_file`` / ``load_from_file`` that automatically\n+  choose a serializer based on the file extension.\n+\""\""\""\n+\n+from __future__ import annotations\n+\n+import json\n+import os\n+from pathlib import Path\n+from typing import Any, Callable, Mapping\n+\n+try:\n+    import yaml  # type: ignore\n+    _HAS_YAML = True\n+except Exception:  # pragma: no cover\n+    _HAS_YAML = False\n+\n+# ----------------------------------------------------------------------\n+# Core JSON helpers (unchanged semantics, but with type hints)\n+# ----------------------------------------------------------------------\n+\n+def dumps(obj: Any, *, indent: int = 2) -> str:\n+    \""\""\""Serialize *obj* to a JSON‑formatted ``str``.\n+\n+    Parameters\n+    ----------\n+    obj:\n+        Any JSON‑serializable Python object.\n+    indent:\n+        Number of spaces for pretty‑printing; defaults to ``2``.\n+    \""\""\""\n+    return json.dumps(obj, indent=indent)\n+\n+def loads(s: str) -> Any:\n+    \""\""\""Deserialize a JSON ``str`` back to a Python object.\""\""\""\n+    return json.loads(s)\n+\n+# ----------------------------------------------------------------------\n+# Optional YAML helpers\n+# ----------------------------------------------------------------------\n+\n+def yaml_dumps(obj: Any) -> str:\n+    \""\""\""Serialize *obj* to a YAML string.\n+\n+    Raises\n+    ------\n+    RuntimeError\n+        If ``pyyaml`` is not installed.\n+    \""\""\""\n+    if not _HAS_YAML:  # pragma: no cover\n+        raise RuntimeError(\""YAML support is unavailable – install pyyaml\"")\n+    return yaml.safe_dump(obj, sort_keys=False)\n+\n+def yaml_loads(s: str) -> Any:\n+    \""\""\""Deserialize a YAML string back to a Python object.\n+\n+    Mirrors the behaviour of :func:`yaml.safe_load`.\n+    \""\""\""\n+    if not _HAS_YAML:  # pragma: no cover\n+        raise RuntimeError(\""YAML support is unavailable – install pyyaml\"")\n+    return yaml.safe_load(s)\n+\n+# ----------------------------------------------------------------------\n+# File‑based helpers – choose serializer based on extension\n+# ----------------------------------------------------------------------\n+\n+_SERIALIZERS: Mapping[str, Callable[[Any], str]] = {\n+    \"".json\"": dumps,\n+    \"".yml\"": yaml_dumps,\n+    \"".yaml\"": yaml_dumps,\n+}\n+\n+_DESERIALIZERS: Mapping[str, Callable[[str], Any]] = {\n+    \"".json\"": loads,\n+    \"".yml\"": yaml_loads,\n+    \"".yaml\"": yaml_loads,\n+}\n+\n+def dump_to_file(obj: Any, path: os.PathLike | str) -> None:\n+    \""\""\""Write *obj* to *path* using the appropriate serializer.\n+\n+    The function infers the format from the file extension.  If the extension\n+    is unknown, JSON is used as a fallback.\n+    \""\""\""\n+    p = Path(path)\n+    serializer = _SERIALIZERS.get(p.suffix.lower(), dumps)\n+    with p.open(\""w\"", encoding=\""utf-8\"") as fh:\n+        fh.write(serializer(obj))\n+\n+def load_from_file(path: os.PathLike | str) -> Any:\n+    \""\""\""Read data from *path* and deserialize it according to the file extension.\n+    \""\""\""\n+    p = Path(path)\n+    deserializer = _DESERIALIZERS.get(p.suffix.lower(), loads)\n+    with p.open(\""r\"", encoding=\""utf-8\"") as fh:\n+        content = fh.read()\n+    return deserializer(content)\n\ndiff --git a/tests/test_serializer.py b/tests/test_serializer.py
+new file mode 100644
+index 0000000..b2c3d4e
+--- /dev/null
++++ b/tests/test_serializer.py
+@@ -0,0 +1,96 @@
++import os
++import json
++import unittest
++from pathlib import Path
++\n+from src.data.serializer import (\n+    dumps,\n+    loads,\n+    dump_to_file,\n+    load_from_file,\n+)\n+\n+\n+class TestSerializer(unittest.TestCase):\n+\n+    def setUp(self):\n+        self.tmp_dir = Path(os.getenv(\""TMPDIR\"", \"".\"")).resolve()\n+        self.json_file = self.tmp_dir / \""sample.json\""\n+        self.yaml_file = self.tmp_dir / \""sample.yaml\""\n+        self.sample_data = {\""name\"": \""Alice\"", \""age\"": 30, \""tags\"": [\""dev\"", \""tester\""]}\n+\n+    def tearDown(self):\n+        for p in (self.json_file, self.yaml_file):\n+            if p.exists():\n+                p.unlink()\n+\n+    def test_json_roundtrip(self):\n+        # Direct dumps/loads\n+        s = dumps(self.sample_data)\n+        obj = loads(s)\n+        self.assertDictEqual(obj, self.sample_data)\n+\n+        # File helpers (JSON)\n+        dump_to_file(self.sample_data, self.json_file)\n+        loaded = load_from_file(self.json_file)\n+        self.assertDictEqual(loaded, self.sample_data)\n+\n+    def test_yaml_roundtrip_if_available(self):\n+        # Skip test when pyyaml is not present\n+        try:\n+            from src.data.serializer import yaml_dumps, yaml_loads  # noqa: F401\n+        except Exception:  # pragma: no cover\n+            self.skipTest(\""YAML support not installed\"")\n+            return\n+\n+        dump_to_file(self.sample_data, self.yaml_file)\n+        loaded = load_from_file(self.yaml_file)\n+        # YAML loader may return keys as str, values unchanged\n+        self.assertDictEqual(loaded, self.sample_data)\n+\n+    def test_unknown_extension_defaults_to_json(self):\n+        unknown_file = self.tmp_dir / \""data.unknown\""\n+        dump_to_file(self.sample_data, unknown_file)\n+        with unknown_file.open(\""r\"", encoding=\""utf-8\"") as fh:\n+            raw = fh.read()\n+        # The file should contain JSON because the extension is unknown\n+        self.assertTrue(raw.lstrip().startswith('{'))\n+        unknown_file.unlink()\n+\n+\n+if __name__ == \""__main__\"":\n+    unittest.main()\n",null
+Process the context according to the task description.,"Add timeout support and async API to HTTP client
+
+Enhanced the client with configurable request timeouts (default from `HTTP_TIMEOUT` env var) and a helper to ensure timeout injection. Added type hints, `raise_for_status` checks, and refactored signatures for `get` and `post`. Introduced optional asynchronous `aget` and `apost` functions using `aiohttp`, with runtime detection and clear error handling when `aiohttp` is unavailable. Updated imports accordingly.","diff --git a/src/network/http_client.py b/src/network/http_client.py
+index a1b2c3d..d4e5f6g 100644
+--- a/src/network/http_client.py
++++ b/src/network/http_client.py
+@@ -1,20 +1,45 @@
+-""""""Synchronous HTTP client using requests.""""""
+-
+-import requests
+-
+-def get(url):
+-    response = requests.get(url)
+-    return response.text
+-
+-def post(url, data):
+-    response = requests.post(url, json=data)
+-    return response.json()
++""""""HTTP client with optional timeout and async support.""""""
++
++import os
++import json
++from typing import Any, Dict, Optional
++
++import requests
++try:
++    import aiohttp
++    _HAS_AIOHTTP = True
++except ImportError:  # pragma: no cover
++    _HAS_AIOHTTP = False
++
++DEFAULT_TIMEOUT = float(os.getenv(""HTTP_TIMEOUT"", ""5.0""))
++
++def _apply_timeout(kwargs: Dict[str, Any]) -> Dict[str, Any]:
++    """"""Inject a timeout into request kwargs if missing.""""""
++    if ""timeout"" not in kwargs:
++        kwargs[""timeout""] = DEFAULT_TIMEOUT
++    return kwargs
++
++def get(url: str, *, timeout: Optional[float] = None) -> str:
++    """"""Perform a synchronous GET request and return the response body.""""""
++    kwargs = {}
++    if timeout is not None:
++        kwargs[""timeout""] = timeout
++    else:
++        kwargs = _apply_timeout(kwargs)
++    response = requests.get(url, **kwargs)
++    response.raise_for_status()
++    return response.text
++
++def post(url: str, data: Dict[str, Any], *, timeout: Optional[float] = None) -> Any:
++    """"""Perform a synchronous POST request with JSON payload.""""""
++    kwargs = {}
++    if timeout is not None:
++        kwargs[""timeout""] = timeout
++    else:
++        kwargs = _apply_timeout(kwargs)
++    response = requests.post(url, json=data, **kwargs)
++    response.raise_for_status()
++    return response.json()
++
++# ----------------------------------------------------------------------
++# Async API (requires aiohttp)
++# ----------------------------------------------------------------------
++async def aget(url: str, *, timeout: Optional[float] = None) -> str:
++    """"""Asynchronous GET request returning the response body.""""""
++    if not _HAS_AIOHTTP:  # pragma: no cover
++        raise RuntimeError(""aiohttp is not installed"")
++    timeout = timeout if timeout is not None else DEFAULT_TIMEOUT
++    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout)) as session:
++        async with session.get(url) as resp:
++            resp.raise_for_status()
++            return await resp.text()
++
++async def apost(url: str, data: Dict[str, Any], *, timeout: Optional[float] = None) -> Any:
++    """"""Asynchronous POST request with JSON payload.""""""
++    if not _HAS_AIOHTTP:  # pragma: no cover
++        raise RuntimeError(""aiohttp is not installed"")
++    timeout = timeout if timeout is not None else DEFAULT_TIMEOUT
++    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout)) as session:
++        async with session.post(url, json=data) as resp:
++            resp.raise_for_status()
++            return await resp.json()",null
+Process the context according to the task description.,"Add JSON logger with metadata support
+
+- Replaced plain‑text logger with a JSON‑structured implementation.
+- introduced `JsonLogHandler` that serialises log records (timestamp, level, message, module, function, lineno) as JSON lines.
+- `init_logger` now creates the log directory, accepts a configurable log level, and avoids duplicate handlers on repeated calls.
+- Added `log` convenience wrapper that accepts arbitrary ``**extra`` data, which is merged into the JSON payload.
+- Updated documentation and added comprehensive tests (`tests/test_json_logger.py`) covering basic logging, error logging with extra context, ordering, idempotent initialization, and type‑checking.","diff --git a/src/logging/json_logger.py b/src/logging/json_logger.py
+index e3a1b2c..f4d5e6f 100644
+--- a/src/logging/json_logger.py
++++ b/src/logging/json_logger.py
+@@ -1,45 +1,92 @@
+-\""\""\""Simple logger that writes plain‑text messages to a file.\""\""\""
+-
+-import logging
+-
+-def init_logger(path):
+-    logger = logging.getLogger(\""app\"")
+-    logger.setLevel(logging.INFO)
+-    fh = logging.FileHandler(path)
+-    logger.addHandler(fh)
+-    return logger
++\""\""\""JSON‑structured logger for application diagnostics.\n+\n+The original implementation wrote raw text lines, which made it difficult to\n+parse logs in downstream pipelines.  This overhaul introduces:\n+\n+* A configurable log level.\n+* JSON output that records timestamp, level, message and optional context.\n+* A ``log`` helper that accepts ``**kwargs`` to embed arbitrary metadata.\n+* Automatic creation of the log directory if it does not exist.\n+\""\""\""\n+\n+from __future__ import annotations\n+\n+import json\n+import logging\n+import pathlib\n+import sys\n+from datetime import datetime, timezone\n+from typing import Any, Mapping\n+\n+DEFAULT_LOG_LEVEL = logging.INFO\n+\n+class JsonLogHandler(logging.Handler):\n+    \""\""\""A ``logging.Handler`` that serialises records as JSON lines.\n+\n+    Parameters\n+    ----------\n+    stream:\n+        Any file‑like object supporting ``write`` (e.g. ``sys.stdout`` or an opened\n+        file handle).\n+    \""\""\""\n+\n+    def __init__(self, stream: Any):  # pragma: no cover – trivial init\n+        super().__init__()\n+        self.stream = stream\n+\n+    def emit(self, record: logging.LogRecord) -> None:\n+        try:\n+            payload: Mapping[str, Any] = {\n+                \""timestamp\"": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),\n+                \""level\"": record.levelname,\n+                \""message\"": record.getMessage(),\n+                \""module\"": record.module,\n+                \""function\"": record.funcName,\n+                \""lineno\"": record.lineno,\n+            }\n+            # Merge any extra attributes supplied via ``log(..., extra={...})``\n+            if getattr(record, \""extra\"", None):\n+                payload = {**payload, **record.extra}\n+            self.stream.write(json.dumps(payload) + \""\\n\"")\n+            self.flush()\n+        except Exception:  # pragma: no cover – logging should never raise\n+            self.handleError(record)\n+\n+def init_logger(path: str | pathlib.Path, *, level: int = DEFAULT_LOG_LEVEL) -> logging.Logger:\n+    \""\""\""Initialise a logger that writes JSON lines to *path*.\n+\n+    The function creates the parent directory if necessary and returns the\n+    configured ``logging.Logger`` instance.\n+    \""\""\""\n+    log_path = pathlib.Path(path)\n+    log_path.parent.mkdir(parents=True, exist_ok=True)\n+    logger = logging.getLogger(\""json_logger\"")\n+    logger.setLevel(level)\n+    # Avoid duplicate handlers if init_logger is called repeatedly\n+    if not any(isinstance(h, JsonLogHandler) for h in logger.handlers):\n+        handler = JsonLogHandler(log_path.open(\""a\"", encoding=\""utf-8\""))\n+        logger.addHandler(handler)\n+    return logger\n+\n+def log(logger: logging.Logger, level: int, message: str, **extra: Any) -> None:\n+    \""\""\""Convenient wrapper that logs *message* at *level* with optional *extra* data.\n+\n+    ``extra`` values are attached to the ``LogRecord`` under the attribute\n+    ``extra`` so that :class:`JsonLogHandler` can merge them into the JSON payload.\n+    \""\""\""\n+    if not isinstance(logger, logging.Logger):\n+        raise TypeError(\""logger must be an instance of logging.Logger\"")\n+    # Attach extra dict for the handler\n+    extra_record = {\""extra\"": extra} if extra else {}\n+    logger.log(level, message, **extra_record)\n\ndiff --git a/tests/test_json_logger.py b/tests/test_json_logger.py
+new file mode 100644
+index 0000000..a1b2c3d
+--- /dev/null
++++ b/tests/test_json_logger.py
+@@ -0,0 +1,106 @@
++import json
++import os
++import pathlib
++import tempfile
++import unittest
++
++from src.logging.json_logger import init_logger, log, DEFAULT_LOG_LEVEL
++\n+class TestJsonLogger(unittest.TestCase):\n+\n+    def setUp(self):\n+        self.tmp_dir = tempfile.TemporaryDirectory()\n+        self.log_file = pathlib.Path(self.tmp_dir.name) / \""app.log\""\n+        self.logger = init_logger(self.log_file, level=DEFAULT_LOG_LEVEL)\n+\n+    def tearDown(self):\n+        self.tmp_dir.cleanup()\n+\n+    def _read_log_entries(self):\n+        with self.log_file.open(\""r\"", encoding=\""utf-8\"") as f:\n+            return [json.loads(line) for line in f if line.strip()]\n+\n+    def test_basic_info_message(self):\n+        log(self.logger, 20, \""service started\"")  # 20 == INFO\n+        entries = self._read_log_entries()\n+        self.assertEqual(len(entries), 1)\n+        entry = entries[0]\n+        self.assertEqual(entry[\""level\""], \""INFO\"")\n+        self.assertEqual(entry[\""message\""], \""service started\"")\n+        self.assertIn(\""timestamp\"", entry)\n+\n+    def test_error_with_extra_context(self):\n+        log(\n+            self.logger,\n+            40,  # ERROR\n+            \""failed to process request\"",\n+            request_id=\""abc-123\"",\n+            user=\""alice\"",\n+        )\n+        entries = self._read_log_entries()\n+        entry = entries[-1]\n+        self.assertEqual(entry[\""level\""], \""ERROR\"")\n+        self.assertEqual(entry[\""request_id\""], \""abc-123\"")\n+        self.assertEqual(entry[\""user\""], \""alice\"")\n+\n+    def test_multiple_entries_preserve_order(self):\n+        messages = [\""first\"", \""second\"", \""third\""]\n+        for msg in messages:\n+            log(self.logger, 20, msg)\n+        entries = self._read_log_entries()\n+        self.assertEqual([e[\""message\""] for e in entries], messages)\n+\n+    def test_logger_reinitialization_is_idempotent(self):\n+        # Calling init_logger again should not add duplicate handlers.\n+        init_logger(self.log_file)\n+        # Emit a log entry and ensure only one line is written.\n+        log(self.logger, 20, \""single line\"")\n+        entries = self._read_log_entries()\n+        self.assertEqual(len(entries), 1)\n+\n+    def test_invalid_logger_type_raises(self):\n+        with self.assertRaises(TypeError):\n+            log(\""not-a-logger\"", 20, \""oops\"")\n+\n+\n+if __name__ == \""__main__\"":\n+    unittest.main()",null
+Process the context according to the task description.,"Add type hints, safety checks, and factorial
+
+- Enhanced `src/calculator.py` with type annotations and detailed docstrings for `add`, `subtract`, and `divide`.
+- Added explicit zero‑division guard in `divide` raising `ZeroDivisionError`.
+- Implemented new `factorial` function with input validation and iterative calculation.
+- Updated module docstring to reflect new utilities.
+- Added comprehensive unit tests in `tests/test_calculator.py` covering all functions, edge cases, and combined operations.","diff --git a/src/calculator.py b/src/calculator.py
+index a1b2c3d..e4f5g6h 100644
+--- a/src/calculator.py
++++ b/src/calculator.py
+@@ -1,12 +1,30 @@
+-""""""Simple arithmetic utilities.""""""
+-
+-def add(a, b):
+-    return a + b
+-
+-def subtract(a, b):
+-    return a - b
+-
+-def divide(a, b):
+-    return a / b
++""""""Simple arithmetic utilities with type hints and safety checks.""""""
++
++from __future__ import annotations
++
++def add(a: float, b: float) -> float:
++    """"""Return the sum of *a* and *b*.""""""
++    return a + b
++
++def subtract(a: float, b: float) -> float:
++    """"""Return the difference *a* - *b*.""""""
++    return a - b
++
++def divide(a: float, b: float) -> float:
++    """"""
++    Return the quotient of *a* divided by *b*.
++    Raises ``ZeroDivisionError`` if *b* is zero.
++    """"""
++    if b == 0:
++        raise ZeroDivisionError(""division by zero"")
++    return a / b
++
++def factorial(n: int) -> int:
++    """"""
++    Compute the factorial of a non‑negative integer *n*.
++    Raises ``ValueError`` for negative inputs.
++    """"""
++    if n < 0:
++        raise ValueError(""factorial() not defined for negative values"")
++    result = 1
++    for i in range(2, n + 1):
++        result *= i
++    return result
+diff --git a/tests/test_calculator.py b/tests/test_calculator.py
+new file mode 100644
+index 0000000..d3e4f5a
+--- /dev/null
++++ b/tests/test_calculator.py
+@@ -0,0 +1,58 @@
++import unittest
++
++from src.calculator import add, subtract, divide, factorial
++
++
++class TestCalculator(unittest.TestCase):
++
++    def test_add(self):
++        self.assertEqual(add(2, 3), 5)
++        self.assertAlmostEqual(add(2.5, 1.2), 3.7)
++
++    def test_subtract(self):
++        self.assertEqual(subtract(10, 4), 6)
++        self.assertAlmostEqual(subtract(5.5, 2.2), 3.3)
++
++    def test_divide(self):
++        self.assertEqual(divide(9, 3), 3)
++        self.assertAlmostEqual(divide(7, 2), 3.5)
++        with self.assertRaises(ZeroDivisionError):
++            divide(5, 0)
++
++    def test_factorial(self):
++        self.assertEqual(factorial(0), 1)
++        self.assertEqual(factorial(1), 1)
++        self.assertEqual(factorial(5), 120)
++        self.assertEqual(factorial(7), 5040)
++        with self.assertRaises(ValueError):
++            factorial(-3)
++
++    def test_combined_operations(self):
++        # A more complex expression using the utilities
++        result = add(factorial(3), divide(10, 2))  # 6 + 5 = 11
++        self.assertEqual(result, 11)
++
++
++if __name__ == '__main__':
++    unittest.main()",null
+Process the context according to the task description.,"Add env var overrides to settings
+
+Enhanced `src/config/settings.py` to load configuration from environment variables prefixed with **APP_**, with JSON parsing for complex structures. Expanded defaults (host, port, log_level, feature flags) and added `as_dict` to return the merged configuration. Updated `get` to accept a fallback default. Introduced comprehensive tests in `tests/test_settings.py` covering default values, simple and complex environment overrides, missing keys, and the combined configuration dictionary.","diff --git a/src/config/settings.py b/src/config/settings.py
+index 1122a33..bb33c44 100644
+--- a/src/config/settings.py
++++ b/src/config/settings.py
+@@ -1,30 +1,58 @@
+-""""""Application configuration.""""""
+-
+-DEFAULTS = {
+-    ""debug"": False,
+-    ""host"": ""localhost"",
+-    ""port"": 8000,
+-}
+-
+-def get(key):
+-    return DEFAULTS.get(key)
++""""""Application configuration with environment variable overrides.""""""
++
++import os
++import json
++from typing import Any, Dict
++
++_BASE_CONFIG: Dict[str, Any] = {
++    ""debug"": False,
++    ""host"": ""0.0.0.0"",
++    ""port"": 8080,
++    ""log_level"": ""INFO"",
++    ""features"": {
++        ""experimental"": False,
++        ""beta"": True,
++    },
++}
++
++def _load_from_env() -> Dict[str, Any]:
++    """"""
++    Load configuration values from environment variables prefixed with ``APP_``.
++    Supports JSON strings for complex structures.
++    """"""
++    cfg: Dict[str, Any] = {}
++    prefix = ""APP_""
++    for env_key, env_val in os.environ.items():
++        if not env_key.startswith(prefix):
++            continue
++        key = env_key[len(prefix):].lower()
++        try:
++            cfg[key] = json.loads(env_val)
++        except json.JSONDecodeError:
++            cfg[key] = env_val
++    return cfg
++
++def get(key: str, default: Any = None) -> Any:
++    """"""
++    Retrieve a configuration value. Checks the loaded environment overrides
++    before falling back to the built‑in defaults.
++    """"""
++    overrides = _load_from_env()
++    return overrides.get(key, _BASE_CONFIG.get(key, default))
++
++def as_dict() -> Dict[str, Any]:
++    """"""
++    Return the complete configuration dictionary after applying overrides.
++    """"""
++    cfg = _BASE_CONFIG.copy()
++    cfg.update(_load_from_env())
++    return cfg
+diff --git a/tests/test_settings.py b/tests/test_settings.py
+new file mode 100644
+index 0000000..a1b2c3d
+--- /dev/null
++++ b/tests/test_settings.py
+@@ -0,0 +1,84 @@
++import unittest
++import os
++import json
++
++from src.config.settings import get, as_dict
++
++
++class TestSettings(unittest.TestCase):
++
++    def setUp(self):
++        # Preserve original environment
++        self._original_env = os.environ.copy()
++
++    def tearDown(self):
++        os.environ.clear()
++        os.environ.update(self._original_env)
++
++    def test_default_values(self):
++        self.assertFalse(get(""debug""))
++        self.assertEqual(get(""host""), ""0.0.0.0"")
++        self.assertEqual(get(""port""), 8080)
++
++    def test_env_override_simple(self):
++        os.environ[""APP_DEBUG""] = ""true""
++        os.environ[""APP_PORT""] = ""9090""
++        self.assertEqual(get(""debug""), True)   # json.loads turns ""true"" into True
++        self.assertEqual(get(""port""), 9090)
++
++    def test_env_override_complex(self):
++        features_json = json.dumps({""experimental"": True, ""beta"": False})
++        os.environ[""APP_FEATURES""] = features_json
++        cfg = as_dict()
++        self.assertTrue(cfg[\""features\""][\""experimental\""])
++        self.assertFalse(cfg[\""features\""][\""beta\""])
++
++    def test_missing_key_returns_default(self):
++        self.assertIsNone(get(\""nonexistent\""))\n+        self.assertEqual(get(\""nonexistent\"", default=\""fallback\""), \""fallback\"")
++
++    def test_as_dict_combines_defaults_and_overrides(self):
++        os.environ[\""APP_LOG_LEVEL\""] = \""DEBUG\""
++        cfg = as_dict()
++        self.assertEqual(cfg[\""log_level\""], \""DEBUG\"")
++        # Ensure a key not overridden still comes from defaults
++        self.assertEqual(cfg[\""host\""], \""0.0.0.0\"")
++
++
++if __name__ == \""__main__\"":
++    unittest.main()",null
+Process the context according to the task description.,"Add JSON/YAML config loader with env overrides
+
+Implemented a flexible configuration loader that detects .json or .yaml/.yml files, parses them with json or PyYAML, and optionally overrides settings using environment variables prefixed by a supplied string (with basic type conversion). Added type annotations, validation, and explicit errors for missing files or unsupported formats. Introduced a full test suite verifying JSON/YAML loading, environment‑variable overrides, missing‑file handling, and unsupported‑extension handling.","diff --git a/src/config/config_loader.py b/src/config/config_loader.py
+index 7d8e9f0..9a1b2c3 100644
+--- a/src/config/config_loader.py
++++ b/src/config/config_loader.py
+@@ -1,30 +1,62 @@
+-\""\""\""Simple configuration loader that reads a JSON file.\""\""\""
+-
+-import json
+-
+-def load_config(path):
+-    with open(path, \""r\"") as f:
+-        return json.load(f)
++\""\""\""Configuration loader supporting JSON/YAML files and environment overrides.\n+\n+The original implementation could only read a JSON file from disk.  The new\n+version adds:\n+\n+* Automatic detection of file type based on extension (``.json`` or ``.yaml``).\n+* Optional ``env_prefix`` argument that, when supplied, will replace any config\n+  values with matching ``os.getenv`` entries (useful for CI/CD pipelines).\n+* Type annotations and validation of the resulting dictionary.\n+\""\""\""\n+\n+from __future__ import annotations\n+\n+import json\n+import os\n+from pathlib import Path\n+from typing import Any, Dict\n+\n+try:\n+    import yaml  # type: ignore\n+except ImportError:  # pragma: no cover\n+    yaml = None\n+\n+def _load_json(path: Path) -> Dict[str, Any]:\n+    with path.open(\""r\"", encoding=\""utf-8\"") as f:\n+        return json.load(f)\n+\n+def _load_yaml(path: Path) -> Dict[str, Any]:\n+    if yaml is None:\n+        raise RuntimeError(\""PyYAML is not installed – cannot load .yaml files\"")\n+    with path.open(\""r\"", encoding=\""utf-8\"") as f:\n+        return yaml.safe_load(f) or {}\n+\n+def _apply_env_overrides(config: Dict[str, Any], prefix: str) -> Dict[str, Any]:\n+    \""\""\""Override config values with environment variables.\n+\n+    For each key ``k`` in *config*, if an environment variable ``{prefix}{k}``\n+    exists, its string value will replace the original entry (converted to the\n+    original type when possible).\n+    \""\""\""\n+    for key, value in list(config.items()):\n+        env_key = f\""{prefix}{key}\"".upper()\n+        if env_key in os.environ:\n+            env_val = os.environ[env_key]\n+            # Naïve type conversion – try int, float, bool, fallback to str\n+            if isinstance(value, bool):\n+                config[key] = env_val.lower() in (\""1\"", \""true\"", \""yes\"")\n+            else:\n+                try:\n+                    config[key] = int(env_val)\n+                except ValueError:\n+                    try:\n+                        config[key] = float(env_val)\n+                    except ValueError:\n+                        config[key] = env_val\n+    return config\n+\n+def load_config(path: str | Path, *, env_prefix: str = \""\"") -> Dict[str, Any]:\n+    \""\""\""Load a configuration file.\n+\n+    Parameters\n+    ----------\n+    path:\n+        Path to a ``.json`` or ``.yaml`` file.\n+    env_prefix:\n+        Optional prefix used when looking up environment variables for overrides.\n+    \""\""\""\n+    p = Path(path)\n+    if not p.is_file():\n+        raise FileNotFoundError(f\""Configuration file not found: {p}\"")\n+\n+    if p.suffix.lower() == \"".json\"":\n+        cfg = _load_json(p)\n+    elif p.suffix.lower() in {\"".yaml\"", \"".yml\""}:\n+        cfg = _load_yaml(p)\n+    else:\n+        raise ValueError(\""Unsupported configuration format: must be .json or .yaml\"")\n+\n+    if env_prefix:\n+        cfg = _apply_env_overrides(cfg, env_prefix)\n+    return cfg\ndiff --git a/tests/test_config_loader.py b/tests/test_config_loader.py
+new file mode 100644
+index 0000000..d4e5f6a
+--- /dev/null
++++ b/tests/test_config_loader.py
+@@ -0,0 +1,92 @@
++import json
++import os
++import tempfile
++import unittest
++from pathlib import Path
++
++from src.config.config_loader import load_config
++
++
++class TestConfigLoader(unittest.TestCase):
++
++    def setUp(self):
++        # Create temporary JSON and YAML config files\n+        self.tmp_dir = tempfile.TemporaryDirectory()\n+        self.json_path = Path(self.tmp_dir.name) / \""config.json\""\n+        self.yaml_path = Path(self.tmp_dir.name) / \""config.yaml\""\n+        self.base_cfg = {\""host\"": \""localhost\"", \""port\"": 8080, \""debug\"": False}\n+        self.json_path.write_text(json.dumps(self.base_cfg), encoding=\""utf-8\"")\n+        try:\n+            import yaml\n+            self.yaml_path.write_text(yaml.safe_dump(self.base_cfg), encoding=\""utf-8\"")\n+        except Exception:  # pragma: no cover\n+            self.yaml_path.touch()\n+\n+    def tearDown(self):
++        self.tmp_dir.cleanup()\n+\n+    def test_load_json_file(self):\n+        cfg = load_config(self.json_path)\n+        self.assertEqual(cfg, self.base_cfg)\n+\n+    def test_load_yaml_file(self):\n+        # Skip if PyYAML is unavailable\n+        try:\n+            import yaml  # noqa: F401\n+        except ImportError:\n+            self.skipTest(\""PyYAML not installed\"")\n+        cfg = load_config(self.yaml_path)\n+        self.assertEqual(cfg, self.base_cfg)\n+\n+    def test_env_override(self):\n+        os.environ[\""APP_HOST\""] = \""127.0.0.1\""\n+        os.environ[\""APP_PORT\""] = \""9090\""\n+        os.environ[\""APP_DEBUG\""] = \""true\""\n+        cfg = load_config(self.json_path, env_prefix=\""APP_\"")\n+        self.assertEqual(cfg[\""host\""], \""127.0.0.1\"")\n+        self.assertEqual(cfg[\""port\""], 9090)  # converted to int\n+        self.assertTrue(cfg[\""debug\""])    # converted to bool\n+        # Cleanup env vars\n+        del os.environ[\""APP_HOST\""]\n+        del os.environ[\""APP_PORT\""]\n+        del os.environ[\""APP_DEBUG\""]\n+\n+    def test_missing_file_raises(self):\n+        with self.assertRaises(FileNotFoundError):\n+            load_config(Path(self.tmp_dir.name) / \""nonexistent.json\"")\n+\n+    def test_unsupported_extension(self):\n+        bad_path = Path(self.tmp_dir.name) / \""config.txt\""\n+        bad_path.touch()\n+        with self.assertRaises(ValueError):\n+            load_config(bad_path)\n+\n+\n+if __name__ == \""__main__\"":\n+    unittest.main()",null
+Process the context according to the task description.,"Add connection pooling and context manager
+
+Implemented a lightweight SQLite connection pool with thread‑safe initialization, acquisition, and release. Added `init_pool` (validation), `connection` context manager, enhanced `fetch_all` to accept parameters, new `execute` for DML with commit, and `close_pool` for cleanup. Updated docstrings and type hints. Introduced a comprehensive test suite (`tests/test_connector.py`) covering basic CRUD, pool reuse, invalid initialization handling, context‑manager cleanup, and parameterized queries.","diff --git a/src/database/connector.py b/src/database/connector.py
+index 9f8e7d1..c3b2a4f 100644
+--- a/src/database/connector.py
++++ b/src/database/connector.py
+@@ -1,45 +1,92 @@
+-\""\""\""Simple DB connector using sqlite3.\""\""\""
+-
+-import sqlite3
+-
+-def connect(db_path):
+-    return sqlite3.connect(db_path)
+-
+-def fetch_all(conn, query):
+-    cur = conn.cursor()
+-    cur.execute(query)
+-    return cur.fetchall()
++\""\""\""Robust database connector with connection pooling and context‑manager support.\n+\n+The initial implementation was a thin wrapper around ``sqlite3.connect`` which\n+made it cumbersome to reuse connections safely.  This rewrite introduces a\n+lightweight pooling mechanism, automatic transaction handling, and type\n+annotations to make the API more ergonomic for callers.\n+\""\""\""\n+\n+from __future__ import annotations\n+\n+import queue\n+import sqlite3\n+import threading\n+from contextlib import contextmanager\n+from typing import Generator, Iterable, List, Tuple\n+\n+# ----------------------------------------------------------------------\n+# Connection pool implementation\n+# ----------------------------------------------------------------------\n+\n+_POOL: queue.Queue[sqlite3.Connection] | None = None\n+_POOL_LOCK = threading.Lock()\n+\n+def _init_pool(db_path: str, maxsize: int = 5) -> None:\n+    \""\""\""Initialise a global pool of SQLite connections.\n+\n+    This function is idempotent – subsequent calls are no‑ops once the pool\n+    has been created.\n+    \""\""\""\n+    global _POOL\n+    with _POOL_LOCK:\n+        if _POOL is None:\n+            _POOL = queue.Queue(maxsize)\n+            for _ in range(maxsize):\n+                _POOL.put(sqlite3.connect(db_path, check_same_thread=False))\n+\n+def _acquire() -> sqlite3.Connection:\n+    \""\""\""Grab a connection from the pool, blocking if necessary.\""\""\""\n+    if _POOL is None:\n+        raise RuntimeError(\""Connection pool not initialised – call init_pool first\"")\n+    return _POOL.get()\n+\n+def _release(conn: sqlite3.Connection) -> None:\n+    \""\""\""Return a connection back to the pool.\""\""\""\n+    if _POOL is None:\n+        raise RuntimeError(\""Connection pool not initialised – call init_pool first\"")\n+    _POOL.put(conn)\n+\n+# ----------------------------------------------------------------------\n+# Public API\n+# ----------------------------------------------------------------------\n+\n+def init_pool(db_path: str, maxsize: int = 5) -> None:\n+    \""\""\""Convenient wrapper that validates arguments before delegating to ``_init_pool``.\n+    \""\""\""\n+    if not isinstance(db_path, str) or not db_path:\n+        raise ValueError(\""db_path must be a non‑empty string\"")\n+    if maxsize < 1:\n+        raise ValueError(\""maxsize must be at least 1\"")\n+    _init_pool(db_path, maxsize)\n+\n+@contextmanager\n+def connection() -> Generator[sqlite3.Connection, None, None]:\n+    \""\""\""Yield a database connection that is automatically returned to the pool.\n+\n+    Example\n+    -------\n+    >>> with connection() as conn:\n+    ...     rows = fetch_all(conn, \""SELECT 1\"")\n+    \""\""\""\n+    conn = _acquire()\n+    try:\n+        yield conn\n+    finally:\n+        _release(conn)\n+\n+def fetch_all(conn: sqlite3.Connection, query: str, params: Iterable = ()) -> List[Tuple]:\n+    \""\""\""Execute *query* with optional *params* and return all rows.\n+    \""\""\""\n+    cur = conn.cursor()\n+    cur.execute(query, tuple(params))\n+    return cur.fetchall()\n+\n+def execute(conn: sqlite3.Connection, query: str, params: Iterable = ()) -> None:\n+    \""\""\""Execute a data‑modifying statement and commit the transaction.\n+    \""\""\""\n+    cur = conn.cursor()\n+    cur.execute(query, tuple(params))\n+    conn.commit()\n+\n+def close_pool() -> None:\n+    \""\""\""Close every connection in the pool and reset the global state.\n+    \""\""\""\n+    global _POOL\n+    with _POOL_LOCK:\n+        if _POOL is None:\n+            return\n+        while not _POOL.empty():\n+            conn = _POOL.get_nowait()\n+            conn.close()\n+        _POOL = None\ndiff --git a/tests/test_connector.py b/tests/test_connector.py
+new file mode 100644
+index 0000000..f9a2b3c
+--- /dev/null
++++ b/tests/test_connector.py
+@@ -0,0 +1,97 @@
++import os
++import unittest
++import tempfile
++from src.database.connector import (
++    init_pool,
++    connection,
++    fetch_all,
++    execute,
++    close_pool,
++)
++
++
++class TestDatabaseConnector(unittest.TestCase):
++
++    def setUp(self):
++        # Create a temporary SQLite file for the duration of each test\n+        self.tmp_fd, self.db_path = tempfile.mkstemp(suffix=\"".sqlite3\"")\n+        init_pool(self.db_path, maxsize=2)
++
++    def tearDown(self):
++        close_pool()
++        os.close(self.tmp_fd)
++        os.remove(self.db_path)
++
++    def test_basic_insert_and_fetch(self):
++        with connection() as conn:\n+            execute(conn, \""CREATE TABLE numbers (value INTEGER)\"")\n+            execute(conn, \""INSERT INTO numbers (value) VALUES (?)\"", (42,))\n+            rows = fetch_all(conn, \""SELECT value FROM numbers\"")\n+        self.assertEqual(rows, [(42,)])\n+
++    def test_pool_reuse(self):
++        # Acquire two connections (maxsize=2) and ensure they are distinct objects\n+        with connection() as conn1, connection() as conn2:\n+            self.assertIsNot(conn1, conn2)\n+            # Both should be able to operate on the same DB concurrently\n+            execute(conn1, \""CREATE TABLE t (id INTEGER PRIMARY KEY)\"")\n+            execute(conn2, \""INSERT INTO t (id) VALUES (1)\"")\n+            rows = fetch_all(conn1, \""SELECT id FROM t\"")\n+        self.assertEqual(rows, [(1,)])\n+
++    def test_invalid_pool_initialisation(self):
++        with self.assertRaises(ValueError):\n+            init_pool(\""\"", maxsize=3)\n+        with self.assertRaises(ValueError):\n+            init_pool(self.db_path, maxsize=0)\n+
++    def test_context_manager_cleanup(self):
++        # Ensure that the connection is returned to the pool after exiting the block\n+        with connection() as conn:\n+            conn_id_before = id(conn)\n+        # Acquire again and compare object identity – it should be the same underlying connection\n+        with connection() as conn2:\n+            conn_id_after = id(conn2)\n+        self.assertEqual(conn_id_before, conn_id_after)\n+
++    def test_fetch_without_params(self):
++        with connection() as conn:\n+            execute(conn, \""CREATE TABLE t (a TEXT)\"")\n+            execute(conn, \""INSERT INTO t (a) VALUES ('alpha'), ('beta')\"")\n+            rows = fetch_all(conn, \""SELECT a FROM t WHERE a = ?\"", (\""beta\"",))\n+        self.assertEqual(rows, [(\""beta\"",)])\n+
++
++
++if __name__ == \""__main__\"":\n+    unittest.main()\n",null

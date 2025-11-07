@@ -1,0 +1,617 @@
+question,answer,context,reasoning
+Process the context according to the task description.,"Add sub‑command support and tests to CLI parser
+
+Implemented an enhanced CLI parser with argparse sub‑parsers, introducing `hello` (greeting with optional shout) and `version` commands. Added dynamic dispatch via handler functions, verbose flag output redirected to stderr, and main now returns sub‑command exit codes. Updated documentation and type hints. Included comprehensive unit tests covering sub‑command registration, behavior, verbose output, default message, and exit‑code propagation.","diff --git a/src/cli/parser.py b/src/cli/parser.py
+index c3d4e5f..f6a7b8c 100644
+--- a/src/cli/parser.py
++++ b/src/cli/parser.py
+@@ -1,45 +1,78 @@
+-\""\""\""Simple command‑line parser using argparse.\""\""\""
+-
+-import argparse
+-
+-def build_parser():
+-    parser = argparse.ArgumentParser(description=\""Utility tool.\"")
+-    parser.add_argument(\""--verbose\"", action=\""store_true\"", help=\""Enable verbose output\"")
+-    return parser
+-
+-def main(argv=None):
+-    parser = build_parser()
+-    args = parser.parse_args(argv)
+-    if args.verbose:\n-        print(\""Verbose mode on\"")\n-
+-
+-    # Placeholder for real work
+-    print(\""Done.\"")
++\""\""\""Enhanced CLI parser with sub‑commands and dynamic dispatch.\n+\n+The original implementation only supported a single ``--verbose`` flag.  The\n+new version introduces a ``subparsers`` hierarchy so that additional commands can\n+be added without touching the core ``main`` function.  It also returns the parsed\n+namespace, making the function easier to test.\n+\""\""\""\n+\n+from __future__ import annotations\n+\n+import argparse\n+import sys\n+from typing import Callable, Dict, List\n+\n+\n+def _handle_hello(args: argparse.Namespace) -> int:\n+    \""\""\""Implementation for the ``hello`` sub‑command.\n+\n+    Prints a greeting; returns exit code ``0`` on success.\n+    \""\""\""\n+    greeting = f\""Hello, {args.name}!\""\n+    if args.shout:\n+        greeting = greeting.upper()\n+    print(greeting)\n+    return 0\n+\n+\n+def _handle_version(_args: argparse.Namespace) -> int:\n+    \""\""\""Print the tool version.  Used as a sub‑command handler.\""\""\""\n+    print(\""cli‑tool version 2.1.0\"")\n+    return 0\n+\n+\n+def build_parser() -> argparse.ArgumentParser:\n+    parser = argparse.ArgumentParser(prog=\""cli-tool\"", description=\""Utility command‑line interface\"")\n+    parser.add_argument(\""--verbose\"", action=\""store_true\"", help=\""Enable verbose output\"")\n+\n+    sub = parser.add_subparsers(dest=\""command\"", title=\""sub‑commands\"")\n+\n+    # ``hello`` command\n+    hello_parser = sub.add_parser(\""hello\"", help=\""Print a greeting\"")\n+    hello_parser.add_argument(\""name\"", help=\""Name of the person to greet\"")\n+    hello_parser.add_argument(\""--shout\"", action=\""store_true\"", help=\""Upper‑case the greeting\"")\n+    hello_parser.set_defaults(func=_handle_hello)\n+\n+    # ``version`` command\n+    version_parser = sub.add_parser(\""version\"", help=\""Show version information\"")\n+    version_parser.set_defaults(func=_handle_version)\n+\n+    return parser\n+\n+\n+def main(argv: List[str] | None = None) -> int:\n+    \""\""\""Entry‑point for the CLI tool.\n+\n+    Returns the exit code of the chosen sub‑command or ``0`` for the default\n+    behaviour (no sub‑command).  ``argv`` can be supplied for testing; when ``None``\n+    the arguments are taken from ``sys.argv[1:]``.\n+    \""\""\""\n+    parser = build_parser()\n+    args = parser.parse_args(argv)\n+\n+    if args.verbose:\n+        print(\""[VERBOSE] Parsing complete\"", file=sys.stderr)\n+\n+    if hasattr(args, \""func\""):\n+        # Dispatch to the sub‑command handler\n+        return args.func(args)\n+    else:\n+        # Default action when no sub‑command is provided\n+        print(\""No command supplied – use --help for usage information\"")\n+        return 0\n+\n+if __name__ == \""__main__\"":\n+    sys.exit(main())\n\ndiff --git a/tests/test_parser.py b/tests/test_parser.py
+new file mode 100644
+index 0000000..e1f2a3b
+--- /dev/null
++++ b/tests/test_parser.py
+@@ -0,0 +1,98 @@
++import argparse
++import io
++import sys
++import unittest
++from unittest.mock import patch
++
++from src.cli.parser import build_parser, main
++
++
++class TestCliParser(unittest.TestCase):
++
++    def test_parser_contains_subcommands(self):
++        parser = build_parser()
++        actions = {a.dest for a in parser._actions if hasattr(a, \""dest\"")}\n+        self.assertIn(\""command\"", actions)\n+        # Ensure both expected sub‑commands are registered\n+        subparsers_action = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))\n+        self.assertCountEqual(subparsers_action.choices.keys(), [\""hello\"", \""version\""])\n+
++
++    @patch(\""builtins.print\"")\n+    def test_hello_subcommand(self, mock_print):
++        exit_code = main([\""hello\"", \""Bob\""])\n+        mock_print.assert_called_once_with(\""Hello, Bob!\"")\n+        self.assertEqual(exit_code, 0)\n+
++    @patch(\""builtins.print\"")\n+    def test_hello_shout(self, mock_print):
++        main([\""hello\"", \""alice\"", \""--shout\""])\n+        mock_print.assert_called_once_with(\""HELLO, ALICE!\"")\n+
++
++    @patch(\""builtins.print\"")\n+    def test_version_subcommand(self, mock_print):
++        exit_code = main([\""version\""])\n+        mock_print.assert_called_once_with(\""cli‑tool version 2.1.0\"")\n+        self.assertEqual(exit_code, 0)\n+
++    def test_verbose_flag_outputs_to_stderr(self):
++        with patch.object(sys, \""stderr\"", new=io.StringIO()) as fake_err:\n+            main([\""--verbose\""])\n+            self.assertIn(\""[VERBOSE] Parsing complete\"", fake_err.getvalue())\n+
++    def test_no_subcommand_shows_help_message(self):
++        with patch(\""builtins.print\"") as mock_print:\n+            code = main([])\n+            mock_print.assert_called_once()\n+            self.assertEqual(code, 0)\n+
++
++    def test_main_returns_exit_code_from_handler(self):
++        # Simulate a handler that returns a non‑zero exit code\n+        def fake_handler(_):\n+            return 5\n+        parser = build_parser()\n+        parser.set_defaults(func=fake_handler)\n+        with patch.object(parser, \""parse_args\"", return_value=argparse.Namespace(func=fake_handler, verbose=False)):\n+            from src.cli import parser as parser_module\n+            # Monkey‑patch the module‑level ``build_parser`` to return our custom parser\n+            parser_module.build_parser = lambda: parser\n+            code = parser_module.main([\""dummy\""])\n+            self.assertEqual(code, 5)\n+\n+\n+if __name__ == \""__main__\"":\n+    unittest.main()\n",null
+Process the context according to the task description.,"Add comprehensive string utilities and tests
+
+- Replaced minimal helpers with a full suite: `reverse`, `is_palindrome`, `camel_to_snake`, `snake_to_camel`, `unique_words`, and `longest_common_prefix`.
+- Added type annotations, input validation, and detailed docstrings.
+- Implemented regex‑based transformations and common‑prefix logic.
+- Updated module docstring to reflect expanded functionality and removed unused `is_upper`.
+- Introduced `tests/test_string_utils.py` covering all new functions, edge cases, and combined behavior.","diff --git a/src/utils/string_utils.py b/src/utils/string_utils.py
+index a1b2c3d..d4e5f6g 100644
+--- a/src/utils/string_utils.py
++++ b/src/utils/string_utils.py
+@@ -1,30 +1,78 @@
+-\""\""\""Simple string helper functions.\""\""\""
+-
+-def reverse(s):
+-    return s[::-1]
+-
+-def is_upper(s):
+-    return s.isupper()
++\""\""\""Enhanced string utilities for common text transformations.\n+\n+The original module only provided a very small subset of helpers.  This\n+revision adds a full suite of functions that are type‑annotated, validated,\n+and documented, making the utilities suitable for production code bases.\n+\""\""\""\n+\n+from __future__ import annotations\n+\n+import re\n+from typing import Iterable, List\n+\n+def reverse(text: str) -> str:\n+    \""\""\""Return *text* reversed.\n+\n+    >>> reverse(\""abc\"")\n+    'cba'\n+    \""\""\""\n+    return text[::-1]\n+\n+def is_palindrome(text: str) -> bool:\n+    \""\""\""Return ``True`` if *text* reads the same forwards and backwards,\n+    ignoring case and non‑alphanumeric characters.\n+    \""\""\""\n+    cleaned = re.sub(r\""[^A-Za-z0-9]\"", \""\"", text).lower()\n+    return cleaned == cleaned[::-1]\n+\n+def camel_to_snake(name: str) -> str:\n+    \""\""\""Convert *CamelCase* ``name`` to ``snake_case``.\n+\n+    Handles consecutive capital letters gracefully:\n+    ``\""HTTPResponse\""`` → ``\""http_response\""``.\n+    \""\""\""\n+    s1 = re.sub(r\""(.)([A-Z][a-z]+)\"", r\""\\1_\\2\"", name)\n+    snake = re.sub(r\""([a-z0-9])([A-Z])\"", r\""\\1_\\2\"", s1).lower()\n+    return snake\n+\n+def snake_to_camel(name: str) -> str:\n+    \""\""\""Convert ``snake_case`` *name* to ``CamelCase``.\n+\n+    Empty strings are returned unchanged.\n+    \""\""\""\n+    if not name:\n+        return name\n+    parts = name.split(\""_\"")\n+    return \""\"".join(part.title() for part in parts)\n+\n+def unique_words(text: str) -> List[str]:\n+    \""\""\""Return a list of unique words in *text* preserving their first‑seen order.\n+\n+    Words are determined by ``\\w+`` regular expression and case‑folded.\n+    \""\""\""\n+    seen = set()\n+    uniques: List[str] = []\n+    for word in re.findall(r\""\\w+\"", text.lower()):\n+        if word not in seen:\n+            seen.add(word)\n+            uniques.append(word)\n+    return uniques\n+\n+def longest_common_prefix(strings: Iterable[str]) -> str:\n+    \""\""\""Return the longest common prefix of the supplied *strings*.\n+\n+    If the iterable is empty, ``\""\""`` is returned.\n+    \""\""\""\n+    strings = list(strings)\n+    if not strings:\n+        return \""\""\n+    prefix = strings[0]\n+    for s in strings[1:]:\n+        while not s.startswith(prefix) and prefix:\n+            prefix = prefix[:-1]\n+    return prefix\ndiff --git a/tests/test_string_utils.py b/tests/test_string_utils.py
+new file mode 100644
+index 0000000..e1f2a3b
+--- /dev/null
++++ b/tests/test_string_utils.py
+@@ -0,0 +1,84 @@
++import unittest
++from src.utils.string_utils import (
++    reverse,
++    is_palindrome,
++    camel_to_snake,
++    snake_to_camel,
++    unique_words,
++    longest_common_prefix,
++)
++
++
++class TestStringUtils(unittest.TestCase):
++
++    def test_reverse(self):
++        self.assertEqual(reverse(\""hello\""), \""olleh\"")
++        self.assertEqual(reverse(\""\""), \""\"")
++
++    def test_is_palindrome(self):
++        self.assertTrue(is_palindrome(\""A man, a plan, a canal: Panama\""))\n+        self.assertFalse(is_palindrome(\""OpenAI\""))\n+
++
++    def test_camel_to_snake(self):
++        self.assertEqual(camel_to_snake(\""CamelCase\""), \""camel_case\"")\n+        self.assertEqual(camel_to_snake(\""HTTPResponse\""), \""http_response\"")\n+
++
++    def test_snake_to_camel(self):
++        self.assertEqual(snake_to_camel(\""snake_case\""), \""SnakeCase\"")\n+        self.assertEqual(snake_to_camel(\""\""), \""\"")\n+
++
++    def test_unique_words(self):
++        txt = \""Hello world hello Universe\""\n+        self.assertEqual(unique_words(txt), [\""hello\"", \""world\"", \""universe\""])\n+
++
++    def test_longest_common_prefix(self):
++        seq = [\""interspecies\"", \""interstellar\"", \""interstate\""]\n+        self.assertEqual(longest_common_prefix(seq), \""inters\"")\n+        self.assertEqual(longest_common_prefix([]), \""\"")\n+
++
++    def test_combined_behaviour(self):
++        # Ensure that converting back and forth yields the original (ignoring case)\n+        original = \""ComplexNameExample\""\n+        snake = camel_to_snake(original)\n+        back = snake_to_camel(snake)\n+        self.assertEqual(back.lower(), original.lower())\n+
++
++
++if __name__ == \""__main__\"":\n+    unittest.main()\n",null
+Process the context according to the task description.,"Add extended string utilities and tests
+
+Implemented additional helpers in src/utils/string_utils.py:
+- `strip_spaces` to remove all whitespace.
+- `to_snake_case` for CamelCase/PascalCase conversion.
+- `unique_words` to return ordered unique words.
+Added type annotations and detailed docstrings for existing functions (`capitalize_words`, `reverse`).  
+Introduced a comprehensive test suite (`tests/test_string_utils.py`) covering the new functions along with the original ones, ensuring correct behavior and regression safety.","diff --git a/src/utils/string_utils.py b/src/utils/string_utils.py
+index 9c1d2e3..f7a8b9c 100644
+--- a/src/utils/string_utils.py
++++ b/src/utils/string_utils.py
+@@ -1,24 +1,78 @@
+-\""\""\""Simple string utilities.\""\""\""
+-
+-def capitalize_words(s):
+-    return ' '.join(word.capitalize() for word in s.split())
+-
+-def reverse(s):
+-    return s[::-1]
++\""\""\""Extended string utilities.\n+\n+This module originally offered only very basic helpers.  The update introduces a\n+handful of commonly‑used functions, adds type hints, improves documentation,\n+and preserves backwards‑compatibility for the original helpers.\n+\""\""\""\n+\n+from __future__ import annotations\n+\n+import re\n+from typing import Iterable\n+\n+def capitalize_words(s: str) -> str:\n+    \""\""\""Capitalize the first letter of each word in *s*.\n+\n+    The implementation remains unchanged from the original version but now\n+    includes a proper type annotation and a clearer docstring.\n+    \""\""\""\n+    return \"" \"".join(word.capitalize() for word in s.split())\n+\n+def reverse(s: str) -> str:\n+    \""\""\""Return *s* reversed.\n+\n+    Compatibility wrapper for the legacy function.\n+    \""\""\""\n+    return s[::-1]\n+\n+def strip_spaces(s: str) -> str:\n+    \""\""\""Remove *all* whitespace characters from *s*.\n+\n+    Parameters\n+    ----------\n+    s:\n+        The input string.\n+    Returns\n+    -------\n+    str\n+        The string without any spaces, tabs or new‑line characters.\n+    \""\""\""\n+    return \""\"".join(s.split())\n+\n+def to_snake_case(s: str) -> str:\n+    \""\""\""Convert *s* from CamelCase or PascalCase to ``snake_case``.\n+\n+    The routine uses a regular expression to locate word boundaries and inserts\n+    underscores accordingly.  Non‑alphabetic characters are left untouched.\n+    \""\""\""\n+    # Insert underscore before a capital letter that follows a lowercase or another capital\n+    snake = re.sub(r\""(?<!^)(?=[A-Z])\"", \""_\"", s).lower()\n+    return snake\n+\n+def unique_words(text: str) -> list[str]:\n+    \""\""\""Return a list of unique words preserving the order of first appearance.\n+\n+    Splits on whitespace and filters duplicates while keeping the original case.\n+    \""\""\""\n+    seen: set[str] = set()\n+    result: list[str] = []\n+    for word in text.split():\n+        if word not in seen:\n+            seen.add(word)\n+            result.append(word)\n+    return result\n\ndiff --git a/tests/test_string_utils.py b/tests/test_string_utils.py
+new file mode 100644
+index 0000000..e1f2a3b
+--- /dev/null
++++ b/tests/test_string_utils.py
+@@ -0,0 +1,84 @@
++import unittest
++from src.utils.string_utils import (\n+    capitalize_words,\n+    reverse,\n+    strip_spaces,\n+    to_snake_case,\n+    unique_words,\n+)\n+\n+\n+class TestStringUtils(unittest.TestCase):\n+\n+    def test_capitalize_words(self):\n+        self.assertEqual(capitalize_words(\""hello world\""), \""Hello World\"")\n+        self.assertEqual(capitalize_words(\""mixed CASE\""), \""Mixed CASE\"")\n+\n+    def test_reverse(self):\n+        self.assertEqual(reverse(\""abcd\""), \""dcba\"")\n+        self.assertEqual(reverse(\""\""), \""\"")\n+\n+    def test_strip_spaces(self):\n+        self.assertEqual(strip_spaces(\"" a b  c\\n\\t d\""), \""abcd\"")\n+        self.assertEqual(strip_spaces(\""no_spaces\""), \""no_spaces\"")\n+\n+    def test_to_snake_case(self):\n+        self.assertEqual(to_snake_case(\""CamelCase\""), \""camel_case\"")\n+        self.assertEqual(to_snake_case(\""HTTPRequest\""), \""http_request\"")\n+        self.assertEqual(to_snake_case(\""already_snake\""), \""already_snake\"")\n+\n+    def test_unique_words(self):\n+        text = \""foo bar foo baz bar qux\""\n+        self.assertListEqual(unique_words(text), [\""foo\"", \""bar\"", \""baz\"", \""qux\""])\n+        self.assertListEqual(unique_words(\""\""), [])\n+\n+\n+if __name__ == \""__main__\"":\n+    unittest.main()\n",null
+Process the context according to the task description.,"Add CSV/TSV loader with validation utilities
+
+Replaced the simple pipe‑delimited parser with a comprehensive data‑processing module that:
+- reads generic CSV/TSV files using `csv.reader` with a configurable delimiter (default “,”)
+- provides `_coerce_int` and `_coerce_float` helpers for type conversion and validation
+- introduces `parse_record` to validate row structure and cast fields to proper types (`id`, `quantity`, `price`)
+- adds `load_data` to return a list of typed records from a file
+- adds `filter_by_price` to filter records based on a minimum price
+- updates the module docstring and adds full type annotations throughout.","diff --git a/src/data/processor.py b/src/data/processor.py
+index 3a4b5c6..7d8e9f0 100644
+--- a/src/data/processor.py
++++ b/src/data/processor.py
+@@ -1,22 +1, fifty @@
+-""""""Utility for processing plain‑text records.""""""
+-
+-def parse_line(line):
+-    parts = line.strip().split(""|"")
+-    return {""id"": parts[0], ""value"": parts[1]}
+-
+-def load_file(path):
+-    with open(path) as f:
+-        return [parse_line(l) for l in f if l.strip()]
++""""""Data processing helpers with CSV/TSV support and validation utilities.""""""
++
++from __future__ import annotations
++
++import csv
++import pathlib
++from typing import Iterable, List, Mapping, Sequence
++
++DEFAULT_DELIMITER = "",""
++
++def _coerce_int(value: str) -> int:
++    """"""Convert *value* to ``int`` raising ``ValueError`` on failure.""""""
++    return int(value.strip())
++
++def _coerce_float(value: str) -> float:
++    """"""Convert *value* to ``float``.""""""
++    return float(value.strip())
++
++def _read_rows(source: pathlib.Path | str, *, delimiter: str = DEFAULT_DELIMITER) -> List[List[str]]:
++    """"""
++    Read a CSV‑like file and return a list of rows where each row is a list of strings.
++    Empty rows are ignored.  The *delimiter* can be customised (e.g. ``\""\\t\""`` for TSV).
++    """"""
++    path = pathlib.Path(source)
++    with path.open(newline=\""\"") as f:
++        reader = csv.reader(f, delimiter=delimiter)
++        return [list(row) for row in reader if any(cell.strip() for cell in row)]
++
++def parse_record(row: Sequence[str]) -> Mapping[str, int | float | str]:
++    """"""
++    Transform a raw CSV row into a typed mapping.
++    Expected layout: ``id``, ``quantity`` (int), ``price`` (float).
++    """"""
++    if len(row) < 3:
++        raise ValueError(f\""Row has insufficient columns: {row}\"")
++    return {
++        \""id\"": row[0].strip(),
++        \""quantity\"": _coerce_int(row[1]),
++        \""price\"": _coerce_float(row[2]),
++    }
++
++def load_data(source: pathlib.Path | str, *, delimiter: str = DEFAULT_DELIMITER) -> List[Mapping[str, int | float | str]]:
++    """"""
++    Load and parse a CSV/TSV file into a list of typed records.
++    """"""
++    raw_rows = _read_rows(source, delimiter=delimiter)
++    return [parse_record(r) for r in raw_rows]
++
++def filter_by_price(records: Iterable[Mapping[str, int | float | str]], *, min_price: float = 0.0) -> List[Mapping[str, int | float | str]]:
++    """"""
++    Return a new list containing only records whose ``price`` field is greater than or equal to ``min_price``.
++    """"""
++    return [rec for rec in records if isinstance(rec.get(\""price\""), (int, float)) and rec[\""price\""] >= min_price]",null
+Process the context according to the task description.,"Add determinant, inverse, validation to matrix
+
+Extended the matrix module with a full‑featured algebra toolkit:
+- Added type‑annotated `Matrix` alias and `_validate_matrix` helper for input checks.
+- Implemented `is_square`, recursive `determinant`, and Gauss‑Jordan `inverse`.
+- Refactored `transpose` and `multiply` to use validation and clear error messages.
+- Provided deprecated wrappers `mul` and `det` for backward compatibility.
+- Updated doc‑strings and added comprehensive unit tests covering transpose, multiplication (including dimension mismatches), square detection, determinant calculations (2×2, 3×3, non‑square error), and inverse functionality (identity, standard 2×2, singular matrix error, and random 3×3 verification via A·A⁻¹ ≈ I).","diff --git a/src/math/matrix.py b/src/math/matrix.py
+index 9f8e7c1..d3a2b4e 100644
+--- a/src/math/matrix.py
++++ b/src/math/matrix.py
+@@ -1,45 +1,92 @@
+-\""\""\""Basic matrix utilities.\""\""\""
+-
+-def transpose(matrix):
+-    return list(zip(*matrix))
+-
+-def multiply(a, b):
+-    # naive implementation assuming compatible sizes
+-    result = [[0 for _ in range(len(b[0]))] for _ in range(len(a))]
+-    for i in range(len(a)):
+-        for j in range(len(b[0])):
+-            for k in range(len(b)):
+-                result[i][j] += a[i][k] * b[k][j]
+-    return result
++\""\""\""Extended matrix algebra module.\n+\n+Provides a small but type‑annotated toolbox for dense 2‑D matrices using\n+plain Python lists.  The original file only exported ``transpose`` and a very\n+basic ``multiply`` implementation.  This revision adds:\n+\n+* ``determinant`` – recursive Laplace expansion for square matrices.\n+* ``inverse`` – matrix inversion via Gauss‑Jordan elimination.\n+* ``is_square`` utility.\n+* Input validation and comprehensive doc‑strings.\n+\""\""\""\n+\n+from __future__ import annotations\n+\n+from typing import List, Sequence\n+\n+Matrix = List[List[float]]\n+\n+def _validate_matrix(m: Sequence[Sequence[float]]) -> None:\n+    \""\""\""Ensure *m* is a well‑formed rectangular matrix.\n+\n+    Raises\n+    ------\n+    ValueError\n+        If rows have differing lengths or the matrix is empty.\n+    \""\""\""\n+    if not m:\n+        raise ValueError(\""Matrix cannot be empty\"")\n+    row_len = len(m[0])\n+    for row in m:\n+        if len(row) != row_len:\n+            raise ValueError(\""All rows must have the same length\"")\n+\n+def is_square(m: Matrix) -> bool:\n+    \""\""\""Return ``True`` if *m* is a square matrix.\""\""\""\n+    return len(m) == len(m[0]) if m else False\n+\n+def transpose(matrix: Matrix) -> Matrix:\n+    \""\""\""Return the transpose of *matrix*.\n+\n+    The function works for any rectangular matrix.\n+    \""\""\""\n+    _validate_matrix(matrix)\n+    return [list(col) for col in zip(*matrix)]\n+\n+def multiply(a: Matrix, b: Matrix) -> Matrix:\n+    \""\""\""Matrix multiplication ``a @ b``.\n+\n+    Parameters\n+    ----------\n+    a, b:\n+        Matrices where ``len(a[0]) == len(b)``.\n+    \""\""\""\n+    _validate_matrix(a)\n+    _validate_matrix(b)\n+    if len(a[0]) != len(b):\n+        raise ValueError(\""Inner dimensions must match for multiplication\"")\n+    result: Matrix = [[0.0 for _ in range(len(b[0]))] for _ in range(len(a))]\n+    for i in range(len(a)):\n+        for j in range(len(b[0])):\n+            result[i][j] = sum(a[i][k] * b[k][j] for k in range(len(b)))\n+    return result\n+\n+def determinant(matrix: Matrix) -> float:\n+    \""\""\""Compute the determinant of a square *matrix* using recursion.\n+\n+    This implementation is not optimised for large matrices but is\n+    sufficient for educational purposes and small‑scale calculations.\n+    \""\""\""\n+    _validate_matrix(matrix)\n+    if not is_square(matrix):\n+        raise ValueError(\""Determinant is defined only for square matrices\"")\n+    n = len(matrix)\n+    if n == 1:\n+        return matrix[0][0]\n+    if n == 2:\n+        return matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0]\n+    det = 0.0\n+    for col, element in enumerate(matrix[0]):\n+        # Build minor matrix\n+        minor = [row[:col] + row[col + 1 :] for row in matrix[1:]]\n+        det += ((-1) ** col) * element * determinant(minor)\n+    return det\n+\n+def inverse(matrix: Matrix) -> Matrix:\n+    \""\""\""Return the inverse of a non‑singular square *matrix*.\n+\n+    The algorithm augments the original matrix with the identity matrix and\n+    performs row‑reduction to achieve ``[I | A⁻¹]``.\n+    \""\""\""\n+    _validate_matrix(matrix)\n+    if not is_square(matrix):\n+        raise ValueError(\""Inverse is defined only for square matrices\"")\n+    n = len(matrix)\n+    # Create augmented matrix [A | I]\n+    aug: Matrix = [row[:] + [float(i == j) for j in range(n)] for i, row in enumerate(matrix)]\n+    # Forward elimination\n+    for i in range(n):\n+        # Find pivot\n+        pivot = aug[i][i]\n+        if abs(pivot) < 1e-12:\n+            # Search for a non‑zero pivot below\n+            for r in range(i + 1, n):\n+                if abs(aug[r][i]) > 1e-12:\n+                    aug[i], aug[r] = aug[r], aug[i]\n+                    pivot = aug[i][i]\n+                    break\n+            else:\n+                raise ValueError(\""Matrix is singular and cannot be inverted\"")\n+        # Normalize pivot row\n+        aug[i] = [val / pivot for val in aug[i]]\n+        # Eliminate other rows\n+        for r in range(n):\n+            if r == i:\n+                continue\n+            factor = aug[r][i]\n+            aug[r] = [aug[r][c] - factor * aug[i][c] for c in range(2 * n)]\n+    # Extract inverse part\n+    return [row[n:] for row in aug]\n+\n+# Backwards‑compatible alias for legacy callers\n+def mul(a: Matrix, b: Matrix) -> Matrix:  # pragma: no cover\n+    \""\""\""Deprecated wrapper around :func:`multiply`.\""\""\""\n+    return multiply(a, b)\n+\n+def det(m: Matrix) -> float:  # pragma: no cover\n+    \""\""\""Deprecated wrapper around :func:`determinant`.\""\""\""\n+    return determinant(m)\ndiff --git a/tests/test_matrix.py b/tests/test_matrix.py
+new file mode 100644
+index 0000000..a1b2c3d
+--- /dev/null
++++ b/tests/test_matrix.py
+@@ -0,0 +1,124 @@
++import unittest
++from src.math.matrix import (
++    transpose,
++    multiply,
++    determinant,
++    inverse,
++    is_square,
++)
++
++
++class TestMatrixUtilities(unittest.TestCase):
++
++    def test_transpose_rectangular(self):
++        mat = [[1, 2, 3], [4, 5, 6]]
++        expected = [[1, 4], [2, 5], [3, 6]]
++        self.assertEqual(transpose(mat), expected)
++
++    def test_multiply_basic(self):
++        a = [[1, 2], [3, 4]]
++        b = [[5, 6], [7, 8]]
++        expected = [[19, 22], [43, 50]]
++        self.assertEqual(multiply(a, b), expected)
++
++    def test_multiply_dimension_mismatch(self):
++        a = [[1, 2, 3], [4, 5, 6]]
++        b = [[7, 8], [9, 10]]
++        with self.assertRaises(ValueError):
++            multiply(a, b)
++
++    def test_is_square_true(self):
++        self.assertTrue(is_square([[1, 2], [3, 4]]))
++
++    def test_is_square_false(self):
++        self.assertFalse(is_square([[1, 2, 3], [4, 5, 6]]))
++
++    def test_determinant_2x2(self):
++        mat = [[4, 6], [3, 8]]
++        self.assertAlmostEqual(determinant(mat), 14)
++
++    def test_determinant_3x3(self):
++        mat = [
++            [6, 1, 1],
++            [4, -2, 5],
++            [2, 8, 7],
++        ]\n+        # Known determinant = -306\n+        self.assertAlmostEqual(determinant(mat), -306)\n+\n+    def test_determinant_non_square(self):\n+        with self.assertRaises(ValueError):\n+            determinant([[1, 2, 3], [4, 5, 6]])\n+\n+    def test_inverse_identity(self):\n+        identity = [[1.0, 0.0], [0.0, 1.0]]\n+        inv = inverse(identity)\n+        for i in range(2):\n+            for j in range(2):\n+                self.assertAlmostEqual(inv[i][j], identity[i][j])\n+\n+    def test_inverse_2x2(self):\n+        mat = [[4, 7], [2, 6]]\n+        inv = inverse(mat)\n+        # Expected inverse computed analytically\n+        expected = [[0.6, -0.7], [-0.2, 0.4]]\n+        for i in range(2):\n+            for j in range(2):\n+                self.assertAlmostEqual(inv[i][j], expected[i][j], places=7)\n+\n+    def test_inverse_singular(self):\n+        singular = [[1, 2], [2, 4]]\n+        with self.assertRaises(ValueError):\n+            inverse(singular)\n+\n+    def test_inverse_random_matrix(self):\n+        # Verify A * A⁻¹ ≈ I for a random 3x3 matrix\n+        A = [[3, 0, 2], [2, 0, -2], [0, 1, 1]]\n+        inv = inverse(A)\n+        prod = multiply(A, inv)\n+        # Compare to identity matrix\n+        for i in range(3):\n+            for j in range(3):\n+                expected = 1.0 if i == j else 0.0\n+                self.assertAlmostEqual(prod[i][j], expected, places=6)\n+\n+\n+if __name__ == \""__main__\"":\n+    unittest.main()\n",null
+Process the context according to the task description.,"Add unit tests for data processor
+
+Introduced `tests/test_processor.py` with comprehensive test cases for the data processing module. The tests cover:
+- Correct parsing of CSV rows with whitespace handling and type conversion.
+- Error handling for missing columns.
+- Loading CSV data with default commas and TSV data with custom delimiters.
+- Filtering records by price, including handling of missing or invalid price fields.
+These additions ensure robust verification of `load_data`, `parse_record`, and `filter_by_price` functionality.","diff --git a/tests/test_processor.py b/tests/test_processor.py
+new file mode 100644
+index 0000000..b1c2d3e
+--- /dev/null
++++ b/tests/test_processor.py
+@@ -0,0 +1,87 @@
++import unittest
++import pathlib
++import tempfile
++
++from src.data.processor import (
++    load_data,
++    parse_record,
++    filter_by_price,
++)
++
++
++class TestDataProcessor(unittest.TestCase):
++
++    def _write_csv(self, content: str) -> pathlib.Path:
++        """"""Helper that writes *content* to a temporary CSV file and returns its path.""""""
++        tmp = tempfile.NamedTemporaryFile(delete=False, mode=\""w\"", newline=\""\"")
++        tmp.write(content)
++        tmp.flush()
++        tmp.close()
++        return pathlib.Path(tmp.name)
++
++    def test_parse_record_happy_path(self):
++        row = [\""A123\"", \""  10 \"", \"" 99.95 \""]
++        rec = parse_record(row)
++        self.assertEqual(rec[\""id\""], \""A123\"")
++        self.assertEqual(rec[\""quantity\""], 10)
++        self.assertAlmostEqual(rec[\""price\""], 99.95)
++
++    def test_parse_record_missing_columns(self):
++        row = [\""B456\"", \""5\""]  # missing price
++        with self.assertRaises(ValueError):
++            parse_record(row)
++
++    def test_load_data_csv_default_delimiter(self):
++        csv_content = \""\""\""id,quantity,price\\nX1,2,3.5\\nY2,4,7.0\\n\""\""\n+        path = self._write_csv(csv_content)
++        records = load_data(path)
++        self.assertEqual(len(records), 2)
++        self.assertEqual(records[0][\""id\""], \""X1\"")
++        self.assertEqual(records[1][\""quantity\""], 4)
++        self.assertAlmostEqual(records[1][\""price\""], 7.0)
++
++    def test_load_data_tsv_custom_delimiter(self):
++        tsv_content = \""\""\""id\\tquantity\\tprice\\nZ9\\t3\\t12.5\\n\""\""\n+        path = self._write_csv(tsv_content)
++        records = load_data(path, delimiter=\""\\t\"")\n+        self.assertEqual(len(records), 1)\n+        self.assertEqual(records[0][\""id\""], \""Z9\"")\n+        self.assertEqual(records[0][\""quantity\""], 3)\n+        self.assertAlmostEqual(records[0][\""price\""], 12.5)\n+\n+    def test_filter_by_price(self):
++        data = [\n+            {\""id\"": \""A\"", \""quantity\"": 1, \""price\"": 5.0},\n+            {\""id\"": \""B\"", \""quantity\"": 2, \""price\"": 15.0},\n+            {\""id\"": \""C\"", \""quantity\"": 3, \""price\"": 9.9},\n+        ]\n+        filtered = filter_by_price(data, min_price=10.0)\n+        self.assertEqual(len(filtered), 1)\n+        self.assertEqual(filtered[0][\""id\""], \""B\"")\n+\n+    def test_filter_by_price_ignores_missing_or_invalid(self):
++        data = [\n+            {\""id\"": \""D\"", \""quantity\"": 4, \""price\"": None},\n+            {\""id\"": \""E\"", \""quantity\"": 5},\n+            {\""id\"": \""F\"", \""quantity\"": 6, \""price\"": 20},\n+        ]\n+        filtered = filter_by_price(data, min_price=0)\n+        self.assertEqual(len(filtered), 1)\n+        self.assertEqual(filtered[0][\""id\""], \""F\"")\n+\n+\n+if __name__ == \""__main__\"":\n+    unittest.main()\n",null
+Process the context according to the task description.,"Add log levels and timestamps to logger
+
+Implemented a lightweight logger that supports configurable log levels (DEBUG, INFO, WARNING, ERROR) with a default based on the LOG_LEVEL environment variable. Added timestamped formatting and threshold checking before outputting to stdout. Refactored `error` to delegate to `log` with ERROR level. Updated tests to capture stdout, verify level‑specific output, and ensure LOG_LEVEL handling respects environment changes.","diff --git a/utils/logger.py b/utils/logger.py
+index 1122334..5566778 100644
+--- a/utils/logger.py
++++ b/utils/logger.py
+@@ -1,12 +1,24 @@
+-""""""Simple logger using print statements.""""""
+-
+-def log(message):
+-    print(message)
+-
+-def error(message):
+-    print(""ERROR:"", message)
++""""""A lightweight logger that writes to stdout and supports log levels.""""""
++
++import os
++import sys
++import datetime
++
++LEVELS = {""DEBUG"": 10, ""INFO"": 20, ""WARNING"": 30, ""ERROR"": 40}
++DEFAULT_LEVEL = LEVELS.get(os.getenv(""LOG_LEVEL"", ""INFO"").upper(), 20)
++
++def _format(level: str, msg: str) -> str:
++    timestamp = datetime.datetime.utcnow().isoformat()
++    return f""{timestamp} [{level}] {msg}""
++
++def log(message: str, *, level: str = ""INFO""):
++    """"""
++    Log *message* at the given *level* if it meets the current threshold.
++    """"""
++    level = level.upper()
++    if LEVELS.get(level, 0) >= DEFAULT_LEVEL:
++        sys.stdout.write(_format(level, message) + ""\n"")
++
++def error(message: str):
++    log(message, level=""ERROR"")
+diff --git a/tests/test_logger.py b/tests/test_logger.py
+index 8899aa0..ccddeff 100644
+--- a/tests/test_logger.py
++++ b/tests/test_logger.py
+@@ -1,14 +1,32 @@
+-import unittest
+-from utils.logger import log, error
+-
+-class TestLogger(unittest.TestCase):
+-
+-    def test_log(self):
+-        # capture stdout
+-        with self.assertLogs() as cm:
+-            log(""test message"")
+-        self.assertIn(""test message"", cm.output[0])
+-
+-    def test_error(self):
+-        with self.assertLogs() as cm:
+-            error(""failure"")
+-        self.assertIn(""ERROR"", cm.output[0])
++import unittest
++import io
++import sys
++from utils.logger import log, error
++
++
++class TestLogger(unittest.TestCase):
++
++    def setUp(self):
++        # Redirect stdout to capture log output
++        self.captured = io.StringIO()
++        self._original_stdout = sys.stdout
++        sys.stdout = self.captured
++
++    def tearDown(self):
++        sys.stdout = self._original_stdout
++
++    def test_info_level_logging(self):
++        log(""info message"", level=""INFO"")
++        output = self.captured.getvalue()
++        self.assertIn(""[INFO] info message"", output)
++
++    def test_debug_level_respects_env(self):
++        # Temporarily set LOG_LEVEL to DEBUG
++        import os
++        old_level = os.getenv(""LOG_LEVEL"")
++        os.environ[""LOG_LEVEL""] = ""DEBUG""
++        try:
++            log(""debug message"", level=""DEBUG"")
++            output = self.captured.getvalue()
++            self.assertIn(""[DEBUG] debug message"", output)
++        finally:
++            if old_level is None:
++                del os.environ[""LOG_LEVEL""]
++            else:
++                os.environ[""LOG_LEVEL""] = old_level
++
++    def test_error_function(self):
++        error(""critical failure"")
++        output = self.captured.getvalue()
++        self.assertIn(""[ERROR] critical failure"", output)
++
++
++if __name__ == ""__main__"":
++    unittest.main()",null
+Process the context according to the task description.,"Add lightweight structured logger with tests
+
+Implemented `src/logging/logger.py` introducing a `Logger` class with configurable `LogLevel` (DEBUG, INFO, WARNING, ERROR), optional JSON output, thread‑safe writing to stdout or a file, and a temporary‑level context helper. Added `LogLevel` enum and `get_logger` shortcut. Created extensive tests in `tests/test_logger.py` covering basic output, level filtering, JSON mode, temporary level changes, and the shortcut function.","diff --git a/src/logging/logger.py b/src/logging/logger.py
+new file mode 100644
+index 0000000..a1b2c3d
+--- /dev/null
++++ b/src/logging/logger.py
+@@ -0,0 +1,120 @@
++\""\""\""Light‑weight structured logger.\n+\n+This module replaces a previous ad‑hoc ``print``‑based logging approach with a\n+dedicated ``Logger`` class supporting:\n+\n+* configurable log level (DEBUG, INFO, WARNING, ERROR)\n+* optional JSON output for machine‑readable logs\n+* thread‑safe writing to a file or stdout\n+\""\""\""\n+\n+from __future__ import annotations\n+\n+import json\n+import sys\n+import threading\n+from datetime import datetime\n+from enum import IntEnum\n+from pathlib import Path\n+from typing import Any, Callable, Dict, Optional\n+\n+\n+class LogLevel(IntEnum):\n+    DEBUG = 10\n+    INFO = 20\n+    WARNING = 30\n+    ERROR = 40\n+\n+\n+class Logger:\n+    \""\""\""A very small but extensible logger.\n+\n+    Parameters\n+    ----------\n+    name:\n+        Identifier used as the ``source`` field in structured output.\n+    level:\n+        Minimum :class:`LogLevel` that will be emitted.\n+    json_output:\n+        When ``True`` the log record is emitted as a single JSON line.\n+    destination:\n+        ``Path`` to a file, ``\""stdout\""`` (default) or any object offering a ``write``\n+        method.\n+    \""\""\""\n+\n+    def __init__(\n+        self,\n+        name: str,\n+        *,\n+        level: LogLevel = LogLevel.INFO,\n+        json_output: bool = False,\n+        destination: Any = \""stdout\"",\n+    ) -> None:\n+        self.name = name\n+        self.level = level\n+        self.json_output = json_output\n+        self._lock = threading.Lock()\n+\n+        if destination == \""stdout\"":\n+            self._stream = sys.stdout\n+        elif isinstance(destination, (str, Path)):\n+            self._stream = open(Path(destination), \""a\"", encoding=\""utf-8\"")\n+        else:\n+            self._stream = destination\n+\n+    # ------------------------------------------------------------------\n+    # Internal helpers\n+    # ------------------------------------------------------------------\n+    def _emit(self, level: LogLevel, message: str, **extra: Any) -> None:\n+        if level < self.level:\n+            return\n+        timestamp = datetime.utcnow().isoformat() + \""Z\""\n+        record: Dict[str, Any] = {\n+            \""timestamp\"": timestamp,\n+            \""level\"": level.name,\n+            \""source\"": self.name,\n+            \""message\"": message,\n+        }\n+        record.update(extra)\n+        line = json.dumps(record) if self.json_output else f\""{timestamp} [{level.name}] {self.name}: {message}\\n\""\n+        with self._lock:\n+            self._stream.write(line)\n+            self._stream.flush()\n+\n+    # ------------------------------------------------------------------\n+    # Public logging methods\n+    # ------------------------------------------------------------------\n+    def debug(self, msg: str, **kw: Any) -> None:\n+        self._emit(LogLevel.DEBUG, msg, **kw)\n+\n+    def info(self, msg: str, **kw: Any) -> None:\n+        self._emit(LogLevel.INFO, msg, **kw)\n+\n+    def warning(self, msg: str, **kw: Any) -> None:\n+        self._emit(LogLevel.WARNING, msg, **kw)\n+\n+    def error(self, msg: str, **kw: Any) -> None:\n+        self._emit(LogLevel.ERROR, msg, **kw)\n+\n+    # ------------------------------------------------------------------\n+    # Context‑manager helper for temporary log‑level changes\n+    # ------------------------------------------------------------------\n+    def temporarily(self, level: LogLevel) -> Callable[[], None]:\n+        \""\""\""Return a callable that, when invoked, restores the original level.\n+\n+        Typical usage:\n+        ``restore = logger.temporarily(LogLevel.DEBUG); ...; restore()``\n+        \""\""\""\n+        original = self.level\n+        self.level = level\n+        def _restore() -> None:\n+            self.level = original\n+        return _restore\n+\n+    def close(self) -> None:\n+        \""\""\""Close any underlying file handles if applicable.\""\""\""\n+        if self._stream not in (sys.stdout, sys.stderr):\n+            try:\n+                self._stream.close()\n+            except Exception:  # pragma: no cover\n+                pass\n+\n+# Backward compatible shortcut for simple console logging\n+def get_logger(name: str) -> Logger:\n+    return Logger(name)\n\ndiff --git a/tests/test_logger.py b/tests/test_logger.py
+new file mode 100644
+index 0000000..b2c3d4e
+--- /dev/null
++++ b/tests/test_logger.py
+@@ -0,0 +1,84 @@
++import io
++import json
++import os
++import unittest
++from src.logging.logger import Logger, LogLevel, get_logger
++
++
++class TestLogger(unittest.TestCase):
++
++    def setUp(self):
++        # Use an in‑memory buffer to capture output\n+        self.buffer = io.StringIO()
++        self.logger = Logger(\n+            \""unit-test\"",\n+            level=LogLevel.DEBUG,\n+            json_output=False,\n+            destination=self.buffer,\n+        )
++
++    def tearDown(self):
++        self.logger.close()\n+
++
++    def test_basic_output(self):
++        self.logger.info(\""hello world\"")\n+        output = self.buffer.getvalue()\n+        self.assertIn(\""[INFO] unit-test: hello world\"", output)\n+
++
++    def test_level_filtering(self):
++        self.logger.level = LogLevel.WARNING\n+        self.logger.info(\""should be ignored\"")\n+        self.logger.error(\""critical failure\"")\n+        lines = self.buffer.getvalue().splitlines()\n+        self.assertEqual(len(lines), 1)\n+        self.assertIn(\""[ERROR] unit-test: critical failure\"", lines[0])\n+
++    def test_json_mode(self):
++        json_logger = Logger(\n+            \""json-test\"",\n+            level=LogLevel.INFO,\n+            json_output=True,\n+            destination=self.buffer,\n+        )\n+        json_logger.info(\""structured\"", user=\""alice\"", id=42)\n+        line = self.buffer.getvalue().strip()\n+        obj = json.loads(line)\n+        self.assertEqual(obj[\""source\""], \""json-test\"")\n+        self.assertEqual(obj[\""message\""], \""structured\"")\n+        self.assertEqual(obj[\""user\""], \""alice\"")\n+        self.assertEqual(obj[\""id\""], 42)\n+        json_logger.close()\n+\n+    def test_temporarily_change_level(self):
++        restore = self.logger.temporarily(LogLevel.ERROR)\n+        self.logger.debug(\""debug should be hidden\"")\n+        self.logger.error(\""now visible\"")\n+        restore()\n+        self.logger.debug(\""back to debug visible\"")\n+        lines = self.buffer.getvalue().splitlines()\n+        # Expect two messages: the ERROR and the final DEBUG\n+        self.assertEqual(len(lines), 2)\n+        self.assertIn(\""[ERROR] unit-test: now visible\"", lines[0])\n+        self.assertIn(\""[DEBUG] unit-test: back to debug visible\"", lines[1])\n+\n+    def test_get_logger_shorthand(self):
++        short = get_logger(\""shorthand\"")\n+        self.assertIsInstance(short, Logger)\n+        short.close()\n+\n+\n+if __name__ == \""__main__\"":\n+    unittest.main()\n",null
+Process the context according to the task description.,"Add comprehensive math utilities and tests
+
+Implemented a full suite of pure‑Python math helpers in src/utils/math_utils.py: type‑annotated add, iterative factorial with input validation, deterministic is_prime, Euclidean gcd, lcm derived from gcd, prod mimicking math.prod, and a deprecated multiply alias. Updated __all__ for proper exports. Added extensive unit tests in tests/test_math_utils.py covering integer/float addition, factorial edge cases and error handling, prime detection, GCD/LCM behavior, and product calculations, providing thorough verification of the new functionality.","diff --git a/src/utils/math_utils.py b/src/utils/math_utils.py
+index a1b2c3d..e4f5g6h 100644
+--- a/src/utils/math_utils.py
++++ b/src/utils/math_utils.py
+@@ -1,34 +1,112 @@
+-\""\""\""Simple arithmetic helpers.\n-\n-Only addition is currently supported.\n-\""\""\""\n-\n-def add(a, b):\n-    return a + b\n+\""\""\""Comprehensive math utilities.\n+\n+The original file provided a single ``add`` function.  This rewrite adds a small\n+toolkit of pure‑Python helpers that are frequently needed in algorithmic code:\n+\n+* ``add`` – unchanged, but now type‑annotated.\n+* ``factorial`` – iterative implementation with input validation.\n+* ``is_prime`` – deterministic primal‑test for integers up to 2³¹.\n+* ``gcd`` – Euclidean algorithm with support for negative numbers.\n+* ``lcm`` – derived from ``gcd``.\n+\n+All functions raise ``ValueError`` for non‑integer inputs where appropriate and\n+include doc‑strings suitable for automated documentation tools.\n+\""\""\""\n+\n+from __future__ import annotations\n+\n+from typing import Iterable\n+\n+def add(a: int | float, b: int | float) -> int | float:\n+    \""\""\""Return the sum of *a* and *b*.\n+\n+    >>> add(2, 3)\n+    5\n+    \""\""\""\n+    return a + b\n+\n+def factorial(n: int) -> int:\n+    \""\""\""Return ``n!`` (the factorial of *n*).\n+\n+    The function validates that *n* is a non‑negative integer and computes the\n+    result iteratively to avoid recursion limits.\n+\n+    Raises\n+    ------\n+    ValueError\n+        If *n* is negative.\n+    TypeError\n+        If *n* is not an ``int``.\n+    \""\""\""\n+    if not isinstance(n, int):\n+        raise TypeError(\""factorial() argument must be an integer\"")\n+    if n < 0:\n+        raise ValueError(\""factorial() not defined for negative values\"")\n+    result = 1\n+    for i in range(2, n + 1):\n+        result *= i\n+    return result\n+\n+def is_prime(n: int) -> bool:\n+    \""\""\""Return ``True`` if *n* is a prime number.\n+\n+    Uses trial division up to ``sqrt(n)``.  Handles edge cases for numbers less\n+    than 2.\n+    \""\""\""\n+    if not isinstance(n, int):\n+        raise TypeError(\""is_prime() argument must be an integer\"")\n+    if n < 2:\n+        return False\n+    if n in (2, 3):\n+        return True\n+    if n % 2 == 0 or n % 3 == 0:\n+        return False\n+    i = 5\n+    w = 2\n+    while i * i <= n:\n+        if n % i == 0:\n+            return False\n+        i += w\n+        w = 6 - w\n+    return True\n+\n+def gcd(a: int, b: int) -> int:\n+    \""\""\""Compute the greatest common divisor of *a* and *b* using Euclid's algorithm.\n+    \""\""\""\n+    a, b = abs(a), abs(b)\n+    while b:\n+        a, b = b, a % b\n+    return a\n+\n+def lcm(a: int, b: int) -> int:\n+    \""\""\""Return the least common multiple of *a* and *b*.\n+\n+    ``lcm(a, b) = |a * b| // gcd(a, b)`` for non‑zero inputs; ``0`` otherwise.\n+    \""\""\""\n+    if a == 0 or b == 0:\n+        return 0\n+    return abs(a * b) // gcd(a, b)\n+\n+def prod(iterable: Iterable[int | float]) -> int | float:\n+    \""\""\""Return the product of all numbers in *iterable*.\n+\n+    Mirrors ``math.prod`` from the standard library (available from Python 3.8).\n+    \""\""\""\n+    result = 1\n+    for element in iterable:\n+        result *= element\n+    return result\n+\n+# Backward‑compatible alias for legacy code that imported ``multiply``\n+def multiply(*args, **kwargs):  # pragma: no cover\n+    \""\""\""Deprecated wrapper that forwards to :func:`prod`.\n+    \""\""\""\n+    return prod(*args, **kwargs)\n+\n+__all__ = [\n+    \""add\"",\n+    \""factorial\"",\n+    \""is_prime\"",\n+    \""gcd\"",\n+    \""lcm\"",\n+    \""prod\"",\n+    \""multiply\"",\n+]\ndiff --git a/tests/test_math_utils.py b/tests/test_math_utils.py
+new file mode 100644
+index 0000000..9c8d7e6
+--- /dev/null
++++ b/tests/test_math_utils.py
+@@ -0,0 +1,104 @@
++import unittest
++
++from src.utils.math_utils import (\n+    add,\n+    factorial,\n+    is_prime,\n+    gcd,\n+    lcm,\n+    prod,\n+)\n+\n+\n+class TestMathUtils(unittest.TestCase):\n+\n+    def test_add_integers(self):\n+        self.assertEqual(add(2, 3), 5)\n+\n+    def test_add_floats(self):\n+        self.assertAlmostEqual(add(2.5, 0.75), 3.25)\n+\n+    def test_factorial_base_cases(self):\n+        self.assertEqual(factorial(0), 1)\n+        self.assertEqual(factorial(1), 1)\n+\n+    def test_factorial_small_number(self):\n+        self.assertEqual(factorial(5), 120)\n+\n+    def test_factorial_invalid_type(self):\n+        with self.assertRaises(TypeError):\n+            factorial(3.5)\n+\n+    def test_factorial_negative(self):\n+        with self.assertRaises(ValueError):\n+            factorial(-2)\n+\n+    def test_is_prime_edge_cases(self):\n+        self.assertFalse(is_prime(0))\n+        self.assertFalse(is_prime(1))\n+        self.assertTrue(is_prime(2))\n+        self.assertTrue(is_prime(3))\n+\n+    def test_is_prime_known_primes(self):\n+        primes = [5, 7, 11, 13, 17, 19, 23, 29]\n+        for p in primes:\n+            self.assertTrue(is_prime(p), f\""{p} should be prime\"")\n+\n+    def test_is_prime_composites(self):\n+        composites = [4, 6, 8, 9, 10, 12, 14, 15]\n+        for c in composites:\n+            self.assertFalse(is_prime(c), f\""{c} should not be prime\"")\n+\n+    def test_gcd_basic(self):\n+        self.assertEqual(gcd(48, 18), 6)\n+        self.assertEqual(gcd(-48, 18), 6)\n+        self.assertEqual(gcd(0, 5), 5)\n+\n+    def test_lcm_basic(self):\n+        self.assertEqual(lcm(4, 6), 12)\n+        self.assertEqual(lcm(-4, 6), 12)\n+        self.assertEqual(lcm(0, 10), 0)\n+\n+    def test_prod_iterable(self):\n+        self.assertEqual(prod([1, 2, 3, 4]), 24)\n+        self.assertEqual(prod([]), 1)  # empty product is defined as 1\n+\n+    def test_prod_with_floats(self):\n+        self.assertAlmostEqual(prod([0.5, 2, 4]), 4.0)\n+\n+\n+if __name__ == \""__main__\"":\n+    unittest.main()\n+",null
+Process the context according to the task description.,"Add prime, gcd, lcm helpers with tests
+
+Implemented `is_prime`, `gcd`, and `lcm` functions in `src/utils/math_helpers.py` with proper type hints and docstrings. Enhanced existing `multiply` and `power` with annotations. Added a comprehensive test suite (`tests/test_math_helpers.py`) covering the original utilities, the new number‑theoretic helpers, and a combined logic check (`gcd * lcm = product`). This expands the module’s functionality and ensures reliability through unit tests.","diff --git a/src/utils/math_helpers.py b/src/utils/math_helpers.py
+index a1b2c3d..d4e5f6g 100644
+--- a/src/utils/math_helpers.py
++++ b/src/utils/math_helpers.py
+@@ -1,20 +1,58 @@
+-""""""Utility math functions.""""""
+-
+-def multiply(a, b):
+-    return a * b
+-
+-def power(base, exp):
+-    return base ** exp
++""""""Utility math functions with additional number‑theoretic helpers.""""""
++
++from __future__ import annotations
++from typing import Iterable
++
++def multiply(a: int | float, b: int | float) -> int | float:
++    """"""Return the product of *a* and *b*.""""""
++    return a * b
++
++def power(base: int | float, exp: int) -> int | float:
++    """"""Return *base* raised to the power *exp*.""""""
++    return base ** exp
++
++def is_prime(n: int) -> bool:
++    """"""
++    Determine whether *n* is a prime number.
++    Returns ``True`` for prime numbers, ``False`` otherwise.
++    """"""
++    if n < 2:
++        return False
++    if n in (2, 3):
++        return True
++    if n % 2 == 0 or n % 3 == 0:
++        return False
++    i = 5
++    while i * i <= n:
++        if n % i == 0 or n % (i + 2) == 0:
++            return False
++        i += 6
++    return True
++
++def gcd(a: int, b: int) -> int:
++    """"""
++    Compute the greatest common divisor of *a* and *b* using Euclid's algorithm.
++    """"""
++    while b:
++        a, b = b, a % b
++    return abs(a)
++
++def lcm(values: Iterable[int]) -> int:
++    """"""
++    Return the least common multiple of an iterable of integers.
++    """"""
++    from functools import reduce
++    def _lcm(x: int, y: int) -> int:
++        return abs(x * y) // gcd(x, y)
++    return reduce(_lcm, values, 1)
+diff --git a/tests/test_math_helpers.py b/tests/test_math_helpers.py
+new file mode 100644
+index 0000000..f1a2b3c
+--- /dev/null
++++ b/tests/test_math_helpers.py
+@@ -0,0 +1,78 @@
++import unittest
++from src.utils.math_helpers import multiply, power, is_prime, gcd, lcm
++
++
++class TestMathHelpers(unittest.TestCase):
++
++    def test_multiply(self):
++        self.assertEqual(multiply(3, 4), 12)
++        self.assertAlmostEqual(multiply(2.5, 4), 10.0)
++
++    def test_power(self):
++        self.assertEqual(power(2, 8), 256)
++        self.assertEqual(power(5, 0), 1)
++
++    def test_is_prime(self):
++        self.assertTrue(is_prime(2))
++        self.assertTrue(is_prime(13))
++        self.assertFalse(is_prime(1))
++        self.assertFalse(is_prime(15))
++
++    def test_gcd(self):
++        self.assertEqual(gcd(48, 18), 6)
++        self.assertEqual(gcd(-24, 36), 12)
++
++    def test_lcm(self):
++        self.assertEqual(lcm([4, 5, 6]), 60)
++        self.assertEqual(lcm([7, 14]), 14)
++
++    def test_combined_logic(self):
++        # (gcd * lcm) should equal product of numbers for two integers
++        a, b = 12, 18
++        self.assertEqual(gcd(a, b) * lcm([a, b]), a * b)
++
++
++if __name__ == '__main__':
++    unittest.main()",null
