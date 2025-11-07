@@ -13,14 +13,14 @@ pip install huggingface_hub openai watchdog
 ```
 
 The model is hosted on huggingface:
-- [distil-labs/Distil-commit-bot-1.0-1B](https://huggingface.co/distil-labs/Distil-commit-bot-1.0-1B)
+- [distil-labs/Distil-commit-bot-1.0-llama-3.2-1B](https://huggingface.co/distil-labs/Distil-commit-bot-1.0-llama-3.2-1B)
 
 Finally, download the models from huggingface and build them locally:
 ```
-hf download distil-labs/Distil-commit-bot-1.0-1B --local-dir distil-model
+hf download distil-labs/Distil-commit-bot-1.0-llama-3.2-1B --local-dir distil-model
 
 cd distil-model
-ollama create commit-bot-1.0-1B -f Modelfile
+ollama create commit-bot-llama-1.0-1B -f Modelfile
 ```
 
 ### 2. Run the assistant
