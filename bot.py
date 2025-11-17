@@ -12,6 +12,37 @@ from watchdog.observers import Observer
 DEFAULT_QUESTION = """Process the context according to the task description."""
 
 
+def _clean_model_output(s: str) -> str:
+    if s is None:
+        return ""
+    text = s
+    # Remove any <think>...</think> blocks or stray tags
+    try:
+        text = re.sub(
+            r"(<think>)?.*?</think>\s*", "", text, flags=re.DOTALL | re.IGNORECASE
+        )
+
+    except Exception:
+        pass
+    text = text.strip()
+    # Strip code fences if present
+    if text.startswith("```"):
+        # remove the first fence line
+        lines = text.splitlines()
+        # drop first line (``` or ```python)
+        lines = lines[1:]
+        # drop trailing fence if exists
+        if lines and lines[-1].strip().startswith("```"):
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+    # Remove surrounding triple quotes if model returned them
+    for q in ('"""', "'''"):
+        if text.startswith(q) and text.endswith(q):
+            text = text[len(q) : -len(q)].strip()
+            break
+    return text
+
+
 class DistilLabsLLM(object):
     def __init__(self, model_name: str, api_key: str = "EMPTY", port: int = 11434):
         self.model_name = model_name
@@ -58,7 +89,7 @@ Generate only the solution, do not generate anything else
             messages=self.get_prompt(question, context),
             temperature=0,
         )
-        return chat_response.choices[0].message.content
+        return _clean_model_output(chat_response.choices[0].message.content)
 
 
 def run_git_diff_analysis(repository_path, client):
