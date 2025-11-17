@@ -1,6 +1,6 @@
-# distil-commit-bot
+# distil-commit-bot TS
 
-We trained an SLM assistants for assistance with commit messages - Llama 3.2 model (1B parameters) that you can run *locally* via Ollama!
+We trained an SLM assistants for assistance with commit messages on TypeScript codebases - Qwen 3 model (0.6B parameters) that you can run *locally* via Ollama!
 
 ### 1. Installation
 First, install [Ollama](https://ollama.com), following the instructions on their website.
@@ -20,7 +20,7 @@ Finally, download the models from huggingface and build them locally:
 hf download distil-labs/distil-commit-bot-ts-Qwen3-0.6B --local-dir distil-model
 
 cd distil-model
-ollama create commit-bot-qwen3-0.6B -f Modelfile
+ollama create commit-bot-qwen3-0.B -f Modelfile
 ```
 
 ### 2. Run the assistant
@@ -29,10 +29,10 @@ option and suggest a commit message. Use the `--watch` option to re-run
 the assistant whenever the repository changes.
 
 ```
-python bot.py --repository <absolute_or_relative_repository_path>
+python bot.py --repository <absolute_or_relative_git_repository_path>
 
 # optionally, --watch
-python bot.py --repository <absolute_or_relative_repository_path> --watch
+python bot.py --repository <absolute_or_relative_git_repository_path> --watch
 ```
 
 ### 5. Fine-tuning setup
