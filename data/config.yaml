@@ -1,0 +1,9 @@
+base:
+  student_model_name: Qwen3-0.6B
+  task: information-extraction
+  teacher_model_name: openai.gpt-oss-120b
+synthgen:
+  output_is_json: true
+tuning:
+  per_device_eval_batch_size: 1
+  per_device_train_batch_size: 1
