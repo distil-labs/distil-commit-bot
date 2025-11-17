@@ -59,13 +59,13 @@ class DistilLabsLLM(object):
                 "content": """
 You are a problem solving model working on task_description XML block:
 <task_description>## Task
-Generate a concise yet informative git commit message draft from a `git diff` output. The message should include a title (under 50 characters) and optionally a body for additional context when necessary. The commit message should summarize the changes by identifying what was added, modified, or removed, and explain the purpose or impact of those changes in a clear, technical manner.
+Generate a concise git commit message from git diff output. The commit message must have a title under 60 characters followed by 2-4 sentences summarizing the higher-level changes. Focus on understanding the code changes in TypeScript/JavaScript codebases.
 
 ## Inputs
-The raw output string from the `git diff` command, which shows changes between commits, commit and working tree, etc. This includes file paths, added/removed lines, and change context across multiple files. The diff may include code modifications, new files, deleted files, and comments indicating the nature of changes.
+Short, meaningful git diff outputs generated with `git diff --no-ext-diff -U5` showing focused code changes. Each diff represents a single coherent change such as: adding error handling to a function, introducing a new utility function, enhancing component behavior, or modifying existing functionality with clear intent. The diffs are from TypeScript/JavaScript projects across various contexts (Serverless, React, Node.js, etc.) and include 5 lines of context around each change.
 
 ## Outputs
-A string in conventional git commit message format: a title line (<=50 characters) followed by an optional blank line and a body paragraph for elaboration. The body should provide specific details about the changes made, including functionality added, bugs fixed, or architectural improvements. Omit the body if the title sufficiently describes the changes.</task_description>
+A JSON object with structure `{ "commit_message": COMMIT_MESSAGE }` where COMMIT_MESSAGE is a string containing a title (under 60 chars) followed by 2-4 summary sentences describing the changes at a higher level, focusing on the purpose and impact rather than implementation details.</task_description>
 You will be given a single task with context in the context XML block and the task in the question XML block
 Solve the task in question block based on the context in context block.
 Generate only the answer, do not generate anything else
@@ -79,6 +79,7 @@ Now for the real task, solve the task in question block based on the context in 
 Generate only the solution, do not generate anything else
 <context>{context}</context>
 <question>{question}</question>
+/no_think
 """,
             },
         ]
