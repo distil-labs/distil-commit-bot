@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import re
 import subprocess
@@ -134,7 +135,10 @@ def run_git_diff_analysis(repository_path, client):
     print("Generating commit message suggestion")
     print("=" * 60 + "\n")
     print()
-    print(client.invoke(DEFAULT_QUESTION, context))
+
+    json_response_str = client.invoke(DEFAULT_QUESTION, context)
+    json_response = json.loads(json_response_str)
+    print(json_response["commit_message"])
 
 
 class RepositoryChangeHandler(FileSystemEventHandler):
