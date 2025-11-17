@@ -21,6 +21,7 @@ def _clean_model_output(s: str) -> str:
         text = re.sub(
             r"(<think>)?.*?</think>\s*", "", text, flags=re.DOTALL | re.IGNORECASE
         )
+        text = re.sub(r"</?think>", "", text, flags=re.IGNORECASE)
 
     except Exception:
         pass
@@ -160,7 +161,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--api-key", type=str, default="EMPTY", required=False)
     parser.add_argument(
-        "--model", type=str, default="commit-bot-llama-1.0-1B", required=False
+        "--model", type=str, default="commit-bot-qwen3-0.6B", required=False
     )
     parser.add_argument("--port", type=int, default=11434, required=False)
     parser.add_argument(
