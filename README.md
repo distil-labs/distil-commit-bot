@@ -12,6 +12,11 @@ python -m venv .venv
 pip install huggingface_hub openai watchdog
 ```
 
+or using [uv](https://docs.astral.sh/uv/):
+```
+uv sync
+```
+
 The model is hosted on huggingface:
 - [distil-labs/distil-commit-bot-ts-Qwen3-0.6B](https://huggingface.co/distil-labs/distil-commit-bot-ts-Qwen3-0.6B)
 
@@ -30,9 +35,13 @@ the assistant whenever the repository changes.
 
 ```
 python bot.py --repository <absolute_or_relative_git_repository_path>
+# or
+uv run bot.py --repository <absolute_or_relative_git_repository_path>
 
-# optionally, --watch
+# Watch for file changes in the repository path:
 python bot.py --repository <absolute_or_relative_git_repository_path> --watch
+# or
+uv run bot.py --repository <absolute_or_relative_git_repository_path> --watch
 ```
 
 ### 5. Fine-tuning setup

@@ -1,0 +1,11 @@
+[project]
+name = "distil-commit-bot"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "huggingface-hub>=1.1.4",
+    "openai>=2.8.1",
+    "watchdog>=6.0.0",
+]
