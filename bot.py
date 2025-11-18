@@ -165,7 +165,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--api-key", type=str, default="EMPTY", required=False)
     parser.add_argument(
-        "--model", type=str, default="commit-bot-qwen3-0.6B", required=False
+        "--model",
+        type=str,
+        default="distil-commit-bot-ts-Qwen3-0.6B",
+        required=False,
     )
     parser.add_argument("--port", type=int, default=11434, required=False)
     parser.add_argument(

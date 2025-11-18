@@ -25,7 +25,7 @@ Finally, download the models from huggingface and build them locally:
 hf download distil-labs/distil-commit-bot-ts-Qwen3-0.6B --local-dir distil-model
 
 cd distil-model
-ollama create commit-bot-qwen3-0.B -f Modelfile
+ollama create distil-commit-bot-ts-Qwen3-0.6B -f Modelfile
 ```
 
 ### 2. Run the assistant
