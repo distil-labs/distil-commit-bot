@@ -81,7 +81,6 @@ Now for the real task, solve the task in question block based on the context in 
 Generate only the solution, do not generate anything else
 <context>{context}</context>
 <question>{question}</question>
-/no_think
 """,
             },
         ]
@@ -91,6 +90,8 @@ Generate only the solution, do not generate anything else
             model=self.model_name,
             messages=self.get_prompt(question, context),
             temperature=0,
+            reasoning_effort="none"
+
         )
         return _clean_model_output(chat_response.choices[0].message.content)
 
