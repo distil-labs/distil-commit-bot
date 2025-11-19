@@ -1,6 +1,6 @@
 # distil-commit-bot TS
 
-We trained an SLM assistants for assistance with commit messages on TypeScript codebases - Qwen 3 model (0.6B parameters) that you can run *locally* via Ollama!
+We trained an SLM assistants for assistance with commit messages on TypeScript codebases - Qwen 3 model (0.6B parameters) that you can run *locally*!
 
 ### Installation
 First, install [Ollama](https://ollama.com), following the instructions on their website.
