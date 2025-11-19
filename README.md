@@ -47,13 +47,13 @@ uv run bot.py --repository <absolute_or_relative_git_repository_path> --watch
 ### Training & Evaluation
 The tuned models were trained using knowledge distillation, leveraging the teacher model GPT-OSS-120B. The data+config+script used for finetuning can be found in [data](/data). We used 20 typescript git diff examples (created using [distillabs' vibe tuning](https://www.distillabs.ai/blog/vibe-tuning-the-art-of-fine-tuning-small-language-models-with-a-prompt)) as seed data and supplemented them with 10,000 synthetic examples across various typescript use cases (frontend, backend, react etc.).
 
-We compare the teacher model and the student model on 250 held-out test examples using LLM-as-a-judge evaluation:
+We compare the teacher model and the student model on 10 held-out test examples using LLM-as-a-judge evaluation:
 
 | Model              | Size | Accuracy |
 |--------------------|------|----------|
 | GPT-OSS (thinking) | 120B | 1.00     |
 | Qwen3 0.6B (tuned) | 0.6B | 0.90     |
-| Qwen3 0.6B (base)  | 0.6B | 0.57     |
+| Qwen3 0.6B (base)  | 0.6B | 0.60     |
 Evaluation Criteria:
 
 LLM-as-a-judge: The training config file and train/test data splits are available under [`/data`](/data).
