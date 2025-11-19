@@ -54,8 +54,9 @@ We compare the teacher model and the student model on 10 held-out test examples 
 | GPT-OSS (thinking) | 120B | 1.00     |
 | Qwen3 0.6B (tuned) | 0.6B | 0.90     |
 | Qwen3 0.6B (base)  | 0.6B | 0.60     |
-Evaluation Criteria:
 
+
+Evaluation Criteria:
 LLM-as-a-judge: The training config file and train/test data splits are available under [`/data`](/data).
 
 ### FAQ
