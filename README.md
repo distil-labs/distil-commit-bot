@@ -1,6 +1,6 @@
 # distil-commit-bot TS
 
-We trained an SLM assistants for assistance with commit messages on TypeScript codebases - Qwen 3 model (0.6B parameters) that you can run *locally*!
+We trained an SLM assistant for help with commit messages on TypeScript codebases - Qwen 3 model (0.6B parameters) that you can run *locally*!
 
 <p align="center">
   <img width="384" height="384" alt="Commit Bot" src="bot.png" />
