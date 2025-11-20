@@ -2,7 +2,9 @@
 
 We trained an SLM assistants for assistance with commit messages on TypeScript codebases - Qwen 3 model (0.6B parameters) that you can run *locally*!
 
-<img width="384" height="384" alt="Gemini_Generated_Image_vczha6vczha6vczh" src="https://github.com/user-attachments/assets/e4bd0e65-a0cc-4d95-be44-c3c9a3d42d62" />
+<p align="center">
+  <img width="384" height="384" alt="Commit Bot" src="bot.png" />
+</p>
 
 ### Installation
 First, install [Ollama](https://ollama.com), following the instructions on their website.
