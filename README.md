@@ -50,7 +50,7 @@ uv run bot.py --repository <absolute_or_relative_git_repository_path> --watch
 
 ### Examples
 
-See [examples/README.md](examples/README.md)
+See [examples](/examples)
 
 ### Training & Evaluation
 The tuned models were trained using knowledge distillation, leveraging the teacher model GPT-OSS-120B. The data+config+script used for finetuning can be found in [data](/data). We used 20 typescript git diff examples (created using [distillabs' vibe tuning](https://www.distillabs.ai/blog/vibe-tuning-the-art-of-fine-tuning-small-language-models-with-a-prompt)) as seed data and supplemented them with 10,000 synthetic examples across various typescript use cases (frontend, backend, react etc.).

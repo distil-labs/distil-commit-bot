@@ -55,11 +55,10 @@ index 9c1d2f7..b8e4a5b 100644
 ```
 
 ### commit message
-```
+
 Add abort handling and async logic to useFetch hook
 
 The hook now creates an AbortController to cancel in‑flight requests on unmount or when options change. It switches to async\/await, resets errors on success, and logs cancelled requests. The effect's dependencies include a stringified options object to ensure refetching when options mutate, and the hook now returns its data, error, and loading state.
-```
 
 ## Example 2
 
@@ -96,11 +95,10 @@ index 1122a33..3344b55 100644
 ```
 
 ### commit message
-```
+
 Add generic typing and error handling to cache getItem
 
 The getItem function now uses a generic <T> type and returns the parsed value or null, providing type safety for callers. It wraps JSON.parse in a try/catch and removes the entry from localStorage if parsing fails, preventing corrupted data from lingering. These changes make the cache service more robust and easier to use throughout the application.
-```
 
 ## Example 3
 
@@ -169,11 +167,10 @@ index 9f8e7d6..c3b2a1f 100644
 ```
 
 ### commit message
-```
+
 Enhance Dropdown accessibility and keyboard support
 
 The toggle handler now uses a functional state update to avoid stale closures. A new keydown listener closes the menu on Escape and focuses the first list item on ArrowDown, improving keyboard navigation. List items are made focusable with `tabIndex=0` and respond to Enter key presses, allowing selection via keyboard. Additional comments note future ARIA role enhancements for better screen‑reader support.
-```
 
 ## Example 4
 
@@ -216,11 +213,10 @@ index 9a3b7c1..d4e5f6a 100644
 ```
 
 ### commit message
-```
+
 Add abort support to useFetch hook
 
 The hook now creates an AbortController and passes its signal to the fetch request, enabling cancellation of in‑flight requests. A cleanup function aborts the request when the component unmounts or the URL changes, preventing memory leaks and stray state updates. This enhances robustness of data fetching in React components.
-```
 
 ## Example 5
 
@@ -271,11 +267,10 @@ index 7a9d3c2..e5f1b8d 100644
 ```
 
 ### commit message
-```
+
 Add close reason handling and button to Modal component
 
 The Modal's onClose callback now receives a reason indicating how the modal was closed ('backdrop', 'escape', or 'button'). A click handler on the backdrop detects overlay clicks and invokes onClose with the 'backdrop' reason. A new close button inside the modal content also triggers onClose with the 'button' reason. These updates give consumers clearer context for closing actions and improve usability.
-```
 
 ## Example 6
 
@@ -315,11 +310,10 @@ index 4f2a9b1..c3d8e7a 100644
 ```
 
 ### commit message
-```
+
 Add overflow check to multiply and new factorial utility
 
 The `multiply` function now includes a runtime check that throws an error when the result is not finite, preventing silent overflow for extremely large inputs. A new `factorial` function is introduced to compute the factorial of a non‑negative integer recursively, with validation that rejects negative arguments. These changes improve the robustness of the math utilities and expand the library's functionality.
-```
 
 ## Example 7
 
@@ -368,8 +362,7 @@ index a1b2c3d..e4f5g6h 100644
 ```
 
 ### commit message
-```
+
 Add generic typing and improve error handling to useLocalStorage hook
 
 The hook now uses a generic `<T>` parameter, returning a typed `[value, setter]` tuple instead of `any`. JSON parsing is cast to `T` and error logging is changed to a warning with clearer context. A comment notes a possible in‑memory fallback, and the overall implementation is more type‑safe and robust for React projects.
-```
