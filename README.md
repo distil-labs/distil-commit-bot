@@ -75,3 +75,29 @@ We focus on small models (< 8B parameters), and these make errors when used out 
 **Q: I want to train a small language model for my use-case**
 
 A: Visit our [website](https://www.distillabs.ai) and reach out to us, we offer custom solutions.
+
+  ---
+
+## Links
+
+<p align="center">
+  <a href="https://www.distillabs.ai/?utm_source=github&utm_medium=referral&utm_campaign=distil-commit-bot">
+    <img src="https://github.com/distil-labs/badges/blob/main/badge-distillabs-home.svg?raw=true" alt="Distil Labs Homepage" />
+  </a>
+  <a href="https://github.com/distil-labs">
+    <img src="https://github.com/distil-labs/badges/blob/main/badge-github.svg?raw=true" alt="GitHub" />
+  </a>
+  <a href="https://huggingface.co/distil-labs">
+    <img src="https://github.com/distil-labs/badges/blob/main/badge-huggingface.svg?raw=true" alt="Hugging Face" />
+  </a>
+  <a href="https://www.linkedin.com/company/distil-labs/">
+    <img src="https://github.com/distil-labs/badges/blob/main/badge-linkedin.svg?raw=true" alt="LinkedIn" />
+  </a>
+  <a href="https://distil-labs-community.slack.com/join/shared_invite/zt-36zqj87le-i3quWUn2bjErRq22xoE58g">
+    <img src="https://github.com/distil-labs/badges/blob/main/badge-slack.svg?raw=true" alt="Slack" />
+  </a>
+  <a href="https://x.com/distil_labs">
+    <img src="https://github.com/distil-labs/badges/blob/main/badge-twitter.svg?raw=true" alt="Twitter" />
+  </a>
+</p>
+
